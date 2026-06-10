@@ -1424,12 +1424,29 @@ function saveActive(store, catKey, ids) {
   localStorage.setItem(`active_${store}_${catKey}`, JSON.stringify(ids));
   scheduleSyncToCloud();
 }
+// ===== 店舗別 入力形式（税込み/税抜き）オーバーライド =====
+// itype_${store} → { itemId: 'incl' | 'excl' }（未設定の項目はマスタの値を使用）
+function getItypeOverrides(store) {
+  const s = localStorage.getItem(`itype_${store}`);
+  return s ? JSON.parse(s) : {};
+}
+function setItypeOverride(store, id, val) {
+  const ov = getItypeOverrides(store);
+  if (val === null) delete ov[id];
+  else ov[id] = val;
+  localStorage.setItem(`itype_${store}`, JSON.stringify(ov));
+  scheduleSyncToCloud();
+}
+function applyItypeOverride(store, items) {
+  const ov = getItypeOverrides(store);
+  return items.map(i => ov[i.id] ? { ...i, inputType: ov[i.id], _itypeOv: true } : i);
+}
+
 function getSuppliers(store, catKey) {
   const master = getMaster(catKey);
   const active = getActive(store, catKey);
-  if (active === null) return master;
-  const set = new Set(active);
-  return master.filter(s => set.has(s.id));
+  const list = active === null ? master : master.filter(s => new Set(active).has(s.id));
+  return applyItypeOverride(store, list);
 }
 function hasInvoiceSetup(store, catKey) {
   return getSuppliers(store, catKey).length > 0;
@@ -2117,9 +2134,8 @@ function saveActivePLItems(store, catKey, ids) {
 function getPLItemsForStore(store, catKey) {
   const master = getPLItemsMaster(catKey);
   const active = getActivePLItems(store, catKey);
-  if (active === null) return master;
-  const set = new Set(active);
-  return master.filter(i => set.has(i.id));
+  const list = active === null ? master : master.filter(i => new Set(active).has(i.id));
+  return applyItypeOverride(store, list);
 }
 function isActivePLItem(store, catKey, id) {
   const active = getActivePLItems(store, catKey);
@@ -3564,6 +3580,17 @@ function buildDailySelectPanel(store, catKey) {
   const isOpen = _dailyOpenPanels.has(catKey);
   let rows = '';
 
+  const ov = getItypeOverrides(store);
+  const itypeBtn = (id, masterItype) => {
+    const eff   = ov[id] || masterItype;
+    const isOv  = !!ov[id] && ov[id] !== masterItype;
+    return `<button class="type-tag ${eff}" style="cursor:pointer;border:1px dashed ${eff==='excl'?'#90caf9':'#a5d6a7'};background:${eff==='excl'?'#e3f2fd':'#e8f5e9'}"
+        onclick="event.preventDefault();onToggleStoreItype('${store}','${id}','${masterItype}')"
+        title="タップで税込み/税抜きを切替（この店舗のみ）">
+      ${eff==='excl'?'税抜き':'税込み'}${isOv?'★':''}
+    </button>`;
+  };
+
   if (masterSups.length > 0) {
     if (masterPL.length > 0) rows += `<div style="font-size:11px;color:#888;padding:4px 0 2px">── 取引先 ──</div>`;
     rows += masterSups.map(({ id, label, tax, inputType }) => {
@@ -3575,7 +3602,7 @@ function buildDailySelectPanel(store, catKey) {
           <input type="checkbox" ${on?'checked':''} onchange="onToggleDailyActive('${store}','${catKey}','${id}')">
           <span class="select-name">${label || '（名称未設定）'}</span>
           <span class="tax-tag">${taxLbl}</span>
-          <span class="type-tag ${itype}">${itype==='excl'?'税抜き':'税込み'}</span>
+          ${itypeBtn(id, itype)}
         </label>
       </div>`;
     }).join('');
@@ -3592,7 +3619,7 @@ function buildDailySelectPanel(store, catKey) {
           <input type="checkbox" ${on?'checked':''} onchange="onToggleDailyActivePL('${store}','${catKey}','${id}')">
           <span class="select-name">${label || '（名称未設定）'}</span>
           <span class="tax-tag">${taxLbl}</span>
-          <span class="type-tag ${itype}">${itype==='excl'?'税抜き':'税込み'}</span>
+          ${itypeBtn(id, itype)}
         </label>
       </div>`;
     }).join('');
@@ -3602,7 +3629,12 @@ function buildDailySelectPanel(store, catKey) {
     <div class="select-panel-head" onclick="toggleDailySelectPanel(this,'${catKey}')">
       ${isOpen ? '▼' : '▶'} 表示設定（この店舗のみ）
     </div>
-    <div class="select-panel-body" style="${isOpen ? '' : 'display:none'}">${rows}</div>
+    <div class="select-panel-body" style="${isOpen ? '' : 'display:none'}">
+      <div style="font-size:11px;color:#999;padding:2px 0 6px">
+        「税込み／税抜き」バッジをタップすると、この店舗だけ入力形式を変更できます（★＝店舗別設定中）
+      </div>
+      ${rows}
+    </div>
   </div>`;
 }
 
@@ -3612,6 +3644,15 @@ function toggleDailySelectPanel(head, catKey) {
   body.style.display = open ? 'none' : '';
   head.textContent = (open ? '▶' : '▼') + ' 表示設定（この店舗のみ）';
   if (open) _dailyOpenPanels.delete(catKey); else _dailyOpenPanels.add(catKey);
+}
+
+function onToggleStoreItype(store, id, masterItype) {
+  const ov  = getItypeOverrides(store);
+  const eff = ov[id] || masterItype;
+  const next = eff === 'incl' ? 'excl' : 'incl';
+  // マスタと同じ値に戻す場合はオーバーライドを削除（マスタ追従に戻る）
+  setItypeOverride(store, id, next === masterItype ? null : next);
+  renderDailyContent();
 }
 
 function onToggleDailyActive(store, catKey, id) {
