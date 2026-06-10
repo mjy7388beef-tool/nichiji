@@ -591,6 +591,33 @@
     .ocr-prog-fill { height: 100%; width: 0%; background: #1f3a5f; transition: width 0.2s; }
     .ocr-prog-text { font-size: 13px; color: #444; margin-top: 4px; }
 
+    /* 店舗PINモーダル */
+    .store-pin-overlay {
+      display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.65);
+      z-index: 300; align-items: center; justify-content: center; padding: 16px;
+    }
+    .store-pin-overlay.show { display: flex; }
+    .store-pin-modal {
+      background: #fff; border-radius: 14px; width: 100%; max-width: 340px;
+      padding: 28px 24px; text-align: center; box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+    }
+    .store-pin-modal .pin-icon { font-size: 36px; margin-bottom: 8px; }
+    .store-pin-modal h2 { font-size: 17px; font-weight: 700; margin-bottom: 4px; color: #1a1a1a; }
+    .store-pin-modal .pin-sub { font-size: 13px; color: #888; margin-bottom: 20px; }
+    .store-pin-modal input[type="password"], .store-pin-modal input[type="text"] {
+      width: 100%; padding: 12px 14px; font-size: 20px; letter-spacing: 6px;
+      border: 2px solid #ddd; border-radius: 8px; text-align: center;
+      margin-bottom: 8px; box-sizing: border-box;
+    }
+    .store-pin-modal input:focus { outline: none; border-color: #e8b86d; }
+    .pin-error { font-size: 12px; color: #d32f2f; min-height: 18px; margin-bottom: 12px; }
+    .pin-btns { display: flex; gap: 10px; }
+    .pin-btns button { flex: 1; padding: 12px; border-radius: 8px; font-size: 15px;
+      font-weight: 700; cursor: pointer; border: none; }
+    .pin-btns .btn-confirm { background: #e8b86d; color: #fff; }
+    .pin-btns .btn-confirm:hover { background: #d4a055; }
+    .pin-btns .btn-cancel  { background: #f0f0ee; color: #555; }
+    .pin-btns .btn-cancel:hover  { background: #e0e0de; }
     .ocr-modal-overlay {
       display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6);
       z-index: 260; align-items: center; justify-content: center; padding: 16px;
@@ -688,7 +715,7 @@
       <option value="2026">2026</option>
     </select>
     <label id="storeLbl">店舗</label>
-    <select id="selStore" onchange="reload()">
+    <select id="selStore" onchange="onStoreChange()">
       <option value="北新地">北新地</option>
       <option value="松">松</option>
       <option value="本店">本店</option>
@@ -766,6 +793,20 @@
 <input type="file" id="ocrFileInput" accept="image/*" capture="environment" style="display:none">
 
 <!-- 伝票OCR：解析中オーバーレイ -->
+<div class="store-pin-overlay" id="storePinOverlay">
+  <div class="store-pin-modal">
+    <div class="pin-icon">🔐</div>
+    <h2 id="pinStoreName">店舗名</h2>
+    <div class="pin-sub">このページにアクセスするにはPINが必要です</div>
+    <input type="password" id="pinInput" placeholder="PIN" maxlength="8"
+           inputmode="numeric" onkeydown="if(event.key==='Enter')confirmStorePin()">
+    <div class="pin-error" id="pinError"></div>
+    <div class="pin-btns">
+      <button class="btn-cancel" onclick="cancelStorePin()">キャンセル</button>
+      <button class="btn-confirm" onclick="confirmStorePin()">確認</button>
+    </div>
+  </div>
+</div>
 <div class="ocr-prog-overlay" id="ocrProgOverlay">
   <div class="ocr-prog-box">
     <div class="spin"></div>
@@ -1200,6 +1241,105 @@ let currentMasterCat = 'food';
 let currentMasterSection = 'invoice'; // 'invoice' | 'sales'
 let adminMode = false;
 let currentDailyTab = 'sales';  // 'sales' | 'food' | 'mgmt' | 'labor'
+
+// ===== 店舗PIN認証 =====
+const _authedStores = new Set();
+let _prevStoreValue = null;
+let _pinOnSuccess   = null;
+let _pinOnCancel    = null;
+let _pinTargetStore = null;
+
+function getStorePin(store) { return localStorage.getItem(`store_pin_${store}`) || ''; }
+function setStorePin(store, pin) {
+  if (pin) localStorage.setItem(`store_pin_${store}`, pin);
+  else localStorage.removeItem(`store_pin_${store}`);
+  scheduleSyncToCloud();
+}
+
+function requireStoreAuth(store, onSuccess, onCancel) {
+  const pin = getStorePin(store);
+  if (!pin || _authedStores.has(store)) { onSuccess(); return; }
+  _pinTargetStore = store;
+  _pinOnSuccess   = onSuccess;
+  _pinOnCancel    = onCancel || null;
+  document.getElementById('pinStoreName').textContent =
+    (window.STORE_CONFIG && STORE_CONFIG[store]) ? STORE_CONFIG[store].name : store;
+  document.getElementById('pinInput').value = '';
+  document.getElementById('pinError').textContent = '';
+  document.getElementById('storePinOverlay').classList.add('show');
+  setTimeout(() => document.getElementById('pinInput').focus(), 80);
+}
+
+function confirmStorePin() {
+  const entered = document.getElementById('pinInput').value;
+  const correct = getStorePin(_pinTargetStore);
+  if (entered === correct) {
+    _authedStores.add(_pinTargetStore);
+    document.getElementById('storePinOverlay').classList.remove('show');
+    if (_pinOnSuccess) { _pinOnSuccess(); _pinOnSuccess = null; }
+  } else {
+    document.getElementById('pinError').textContent = 'PINが違います。もう一度入力してください。';
+    document.getElementById('pinInput').value = '';
+    document.getElementById('pinInput').focus();
+  }
+}
+
+function cancelStorePin() {
+  document.getElementById('storePinOverlay').classList.remove('show');
+  if (_pinOnCancel) { _pinOnCancel(); _pinOnCancel = null; }
+  _pinOnSuccess = null;
+}
+
+function onStoreChange() {
+  const sel  = document.getElementById('selStore');
+  const next = sel.value;
+  const prev = _prevStoreValue || next;
+  requireStoreAuth(next,
+    () => { _prevStoreValue = next; reload(); },
+    () => { sel.value = prev; }
+  );
+}
+
+function renderStorePinSettings() {
+  const rows = Object.keys(STORE_CONFIG).map(store => {
+    const hasPin = !!getStorePin(store);
+    const name   = STORE_CONFIG[store].name || store;
+    return `<div style="display:flex;align-items:center;justify-content:space-between;
+              padding:8px 0;border-bottom:1px solid #f5f5f3;font-size:14px">
+      <span>${name}</span>
+      <div style="display:flex;gap:6px;align-items:center">
+        ${hasPin ? '<span style="font-size:11px;background:#e8f5e9;color:#2e7d32;padding:2px 8px;border-radius:10px">設定済み</span>' : '<span style="font-size:11px;color:#aaa">未設定</span>'}
+        <button class="btn btn-clear" style="font-size:12px;padding:4px 10px"
+                onclick="editStorePin('${store}')">${hasPin ? '変更/削除' : '設定'}</button>
+      </div>
+    </div>`;
+  }).join('');
+  document.getElementById('masterCatContent').innerHTML =
+    `<div class="card" style="margin-top:8px">
+       <div class="card-header"><span class="title">店舗ごとのPIN設定</span></div>
+       <div class="card-body">
+         <div style="font-size:12px;color:#888;margin-bottom:12px">
+           PINを設定した店舗は、アクセス時に4桁のPINが必要になります。<br>
+           空欄で保存するとPINが削除されます。
+         </div>
+         ${rows}
+       </div>
+     </div>`;
+}
+
+function editStorePin(store) {
+  const cur  = getStorePin(store);
+  const name = (STORE_CONFIG[store] && STORE_CONFIG[store].name) || store;
+  const msg  = cur ? `${name} の現在のPIN: ****\n新しいPINを入力（削除する場合は空欄のままOK）:`
+                   : `${name} のPINを設定してください（数字4桁推奨）:`;
+  const input = prompt(msg);
+  if (input === null) return;
+  if (input && input.length < 4) { alert('4文字以上で設定してください。'); return; }
+  setStorePin(store, input.trim());
+  if (input.trim()) _authedStores.add(store);
+  toast(input.trim() ? `${name} のPINを設定しました` : `${name} のPINを削除しました`);
+  renderStorePinSettings();
+}
 let currentDay = null;          // 選択中の日（1〜31）
 
 // 旧PL保存キー → 新支払いマスタIDの対応表（後方互換）
@@ -1411,7 +1551,8 @@ function renderMasterTab() {
     `<div class="pl-card">
        <div class="pl-head">管理者メニュー</div>
        <div class="pl-body">
-         <button class="btn btn-clear" onclick="changeAdminPin()" style="margin-top:4px">🔑 PINを変更</button>
+         <button class="btn btn-clear" onclick="changeAdminPin()" style="margin-top:4px">🔑 管理者PINを変更</button>
+         <button class="btn btn-clear" onclick="renderStorePinSettings()" style="margin-top:4px">🏪 店舗PINの設定</button>
          <button class="btn btn-clear" onclick="showSetupModal()" style="margin-top:4px">☁️ クラウド接続設定</button>
        </div>
      </div>`;
@@ -3995,6 +4136,22 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('input[type="number"]').forEach(el => {
     el.setAttribute('inputmode', 'decimal');
   });
+  // 起動時の店舗PIN確認
+  const initStore = document.getElementById('selStore').value;
+  _prevStoreValue = initStore;
+  requireStoreAuth(initStore,
+    () => { _authedStores.add(initStore); },
+    () => {
+      // PIN拒否 → PINなしの最初の店舗へ切替
+      const fallback = Object.keys(STORE_CONFIG).find(s => !getStorePin(s));
+      if (fallback) {
+        document.getElementById('selStore').value = fallback;
+        _prevStoreValue = fallback;
+        _authedStores.add(fallback);
+        reload();
+      }
+    }
+  );
 });
 // 動的に生成される入力欄にも適用（MutationObserver）
 new MutationObserver(mutations => {
