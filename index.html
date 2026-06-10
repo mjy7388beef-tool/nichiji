@@ -3230,14 +3230,15 @@ function dailyManualPL(store, catKey) {
 // タブごとの入力項目（グループ配列）
 function dailyGroups(store, tab) {
   if (tab === 'sales')
-    return [{ label: null, items: getSalesMethodsForStore(store).map(m => ({ ...m, inputType: 'incl' })) }];
+    return [{ label: null, catKey: 'sales', items: getSalesMethodsForStore(store).map(m => ({ ...m, inputType: 'incl' })) }];
   if (tab === 'food')
-    return [{ label: null, items: getSuppliers(store, 'food') }];
+    return [{ label: null, catKey: 'food', items: getSuppliers(store, 'food') }];
   if (tab === 'labor')
-    return [{ label: null, items: [...getSuppliers(store, 'labor'), ...dailyManualPL(store, 'labor')] }];
+    return [{ label: null, catKey: 'labor', items: [...getSuppliers(store, 'labor'), ...dailyManualPL(store, 'labor')] }];
   // mgmt: 変動費・家賃・設備・備品・広告をグループ表示
   return MGMT_CATS.map(c => ({
     label: c.label,
+    catKey: c.key,
     items: [...getSuppliers(store, c.key), ...dailyManualPL(store, c.key)],
   }));
 }
@@ -3320,18 +3321,95 @@ function switchDailyTab(tab) {
 }
 
 function dailyRowHtml(item, dayData, monthData, inputDays) {
+  const itype  = item.inputType || 'incl';
   const taxLbl = (item.tax === 0) ? '非課税' : `${Math.round((item.tax||0)*100)}%`;
+  const typeLbl = itype === 'excl' ? '税抜き入力' : '税込み入力';
   const cur = dayData[item.id];
   let cum = 0;
   Object.values(monthData).forEach(dd => { if (dd && typeof dd[item.id] === 'number') cum += dd[item.id]; });
   const avg = inputDays > 0 ? cum / inputDays : 0;
   const cumLine = cum > 0 ? `月累計 <b>${fmt(cum)}</b>　平均 ${fmt(avg)}` : '月累計 —';
   return `<div class="d-row">
-    <div class="d-label"><span class="d-name">${item.label || '（名称未設定）'}</span><span class="tax-tag">${taxLbl}</span></div>
+    <div class="d-label">
+      <span class="d-name">${item.label || '（名称未設定）'}</span>
+      <span class="tax-tag">${taxLbl}</span>
+      <span class="type-tag ${itype}">${typeLbl}</span>
+    </div>
     <input type="number" class="d-input" value="${cur!==undefined&&cur!==null?cur:''}" placeholder="0" min="0"
            oninput="updateDailyAmount('${item.id}', this.value)">
     <div class="d-cum">${cumLine}</div>
   </div>`;
+}
+
+// 表示設定パネルの開閉状態を保持（再描画後も復元）
+let _dailyOpenPanels = new Set();
+
+function buildDailySelectPanel(store, catKey) {
+  const masterSups = getMaster(catKey);
+  const masterPL   = getPLItemsMaster(catKey).filter(i => (i.type || 'manual') !== 'computed');
+  if (masterSups.length === 0 && masterPL.length === 0) return '';
+
+  const isOpen = _dailyOpenPanels.has(catKey);
+  let rows = '';
+
+  if (masterSups.length > 0) {
+    if (masterPL.length > 0) rows += `<div style="font-size:11px;color:#888;padding:4px 0 2px">── 取引先 ──</div>`;
+    rows += masterSups.map(({ id, label, tax, inputType }) => {
+      const on     = isActive(store, catKey, id);
+      const taxLbl = tax === 0 ? '非課税' : `${(tax*100).toFixed(0)}%`;
+      const itype  = inputType || 'incl';
+      return `<div class="select-row">
+        <label class="select-label">
+          <input type="checkbox" ${on?'checked':''} onchange="onToggleDailyActive('${store}','${catKey}','${id}')">
+          <span class="select-name">${label || '（名称未設定）'}</span>
+          <span class="tax-tag">${taxLbl}</span>
+          <span class="type-tag ${itype}">${itype==='excl'?'税抜き':'税込み'}</span>
+        </label>
+      </div>`;
+    }).join('');
+  }
+
+  if (masterPL.length > 0) {
+    if (masterSups.length > 0) rows += `<div style="font-size:11px;color:#888;padding:6px 0 2px">── 手動入力項目 ──</div>`;
+    rows += masterPL.map(({ id, label, tax, inputType }) => {
+      const on     = isActivePLItem(store, catKey, id);
+      const taxLbl = tax === 0 ? '非課税' : `${(tax*100).toFixed(0)}%`;
+      const itype  = inputType || 'incl';
+      return `<div class="select-row">
+        <label class="select-label">
+          <input type="checkbox" ${on?'checked':''} onchange="onToggleDailyActivePL('${store}','${catKey}','${id}')">
+          <span class="select-name">${label || '（名称未設定）'}</span>
+          <span class="tax-tag">${taxLbl}</span>
+          <span class="type-tag ${itype}">${itype==='excl'?'税抜き':'税込み'}</span>
+        </label>
+      </div>`;
+    }).join('');
+  }
+
+  return `<div class="select-panel">
+    <div class="select-panel-head" onclick="toggleDailySelectPanel(this,'${catKey}')">
+      ${isOpen ? '▼' : '▶'} 表示設定（この店舗のみ）
+    </div>
+    <div class="select-panel-body" style="${isOpen ? '' : 'display:none'}">${rows}</div>
+  </div>`;
+}
+
+function toggleDailySelectPanel(head, catKey) {
+  const body = head.nextElementSibling;
+  const open = body.style.display !== 'none';
+  body.style.display = open ? 'none' : '';
+  head.textContent = (open ? '▶' : '▼') + ' 表示設定（この店舗のみ）';
+  if (open) _dailyOpenPanels.delete(catKey); else _dailyOpenPanels.add(catKey);
+}
+
+function onToggleDailyActive(store, catKey, id) {
+  toggleActive(store, catKey, id);
+  renderDailyContent();
+}
+
+function onToggleDailyActivePL(store, catKey, id) {
+  toggleActivePLItem(store, catKey, id);
+  renderDailyContent();
 }
 
 function renderDailyContent() {
@@ -3352,13 +3430,15 @@ function renderDailyContent() {
   }
   groups.forEach((g, gi) => {
     const bodyRows = g.items.length === 0
-      ? `<div class="d-empty">表示できる項目がありません。「マスタ管理」で設定してください。</div>`
+      ? `<div class="d-empty">項目がありません。下の「表示設定」から追加してください。</div>`
       : g.items.map(it => dailyRowHtml(it, dayData, monthData, inputDays)).join('');
     const dayTotal = g.items.reduce((s, it) => s + (typeof dayData[it.id]==='number'?dayData[it.id]:0), 0);
+    const selectPanel = (currentDailyTab !== 'sales') ? buildDailySelectPanel(store, g.catKey) : '';
     html += `<div class="d-card">
       <div class="d-card-head"><span>${g.label || tabLabel}</span>
         <span class="sub" id="d-cardtotal-${gi}">当日 ${dayTotal>0?fmt(dayTotal):'—'}</span></div>
       <div class="d-card-body">${bodyRows}</div>
+      ${selectPanel}
     </div>`;
   });
   document.getElementById('dailyContent').innerHTML = html;
