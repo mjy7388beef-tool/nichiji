@@ -256,9 +256,30 @@
       font-size: 11px; color: #999; border-bottom: 1px solid #eee; margin-bottom: 2px;
     }
     .sup-row {
-      display: grid; grid-template-columns: 40px 1fr 65px 62px 90px 32px;
+      display: grid;
+      grid-template-columns: 40px 1fr auto 32px;
+      grid-template-areas: "move label sub del";
       gap: 6px; align-items: center;
       padding: 4px 0; border-bottom: 1px solid #f5f5f3;
+    }
+    .sup-row .move-btns       { grid-area: move; }
+    .sup-row > input[type="text"] { grid-area: label; }
+    .sup-row > .btn-del       { grid-area: del; }
+    .sup-row .sup-sub         { grid-area: sub; display: flex; gap: 6px; align-items: center; }
+    .sup-sub .tax-sel         { width: 65px; }
+    .sup-sub .type-btn        { width: 62px; }
+    .sup-sub select:last-child { width: 90px; font-size: 11px; }
+    @media (max-width: 600px) {
+      .sup-row {
+        grid-template-columns: 36px 1fr 28px;
+        grid-template-rows: auto auto;
+        grid-template-areas:
+          "move label del"
+          "move sub   sub";
+        gap: 4px;
+      }
+      .sup-row .sup-sub { flex-wrap: wrap; }
+      .sup-row .sup-sub > * { flex: 1; min-width: 60px; }
     }
     .move-btns {
       display: flex; flex-direction: column; gap: 2px; align-items: center;
@@ -1532,18 +1553,20 @@ function renderMasterCatContent() {
           </div>
           <input type="text" value="${esc}" placeholder="取引先名"
                  oninput="updateMasterName('${catKey}','${id}',this.value)">
-          <select class="tax-sel" ${itype==='excl'?'style="opacity:0.45"':''}
-                  onchange="updateMasterTax('${catKey}','${id}',this.value)">
-            <option value="0.10"${tax===0.10?' selected':''}>10%</option>
-            <option value="0.08"${tax===0.08?' selected':''}>8%</option>
-            <option value="0"${tax===0?' selected':''}>非課税</option>
-          </select>
-          <button class="type-btn ${itype}" onclick="updateMasterInputType('${catKey}','${id}')">
-            ${itype==='excl'?'税抜き':'税込み'}
-          </button>
-          <select class="tax-sel" style="font-size:11px"
-                  onchange="changeMasterCategory('${catKey}','${id}',this.value)">${catOpts}</select>
           <button class="btn-del" onclick="deleteMasterSup('${catKey}','${id}')">✕</button>
+          <div class="sup-sub">
+            <select class="tax-sel" ${itype==='excl'?'style="opacity:0.45"':''}
+                    onchange="updateMasterTax('${catKey}','${id}',this.value)">
+              <option value="0.10"${tax===0.10?' selected':''}>10%</option>
+              <option value="0.08"${tax===0.08?' selected':''}>8%</option>
+              <option value="0"${tax===0?' selected':''}>非課税</option>
+            </select>
+            <button class="type-btn ${itype}" onclick="updateMasterInputType('${catKey}','${id}')">
+              ${itype==='excl'?'税抜き':'税込み'}
+            </button>
+            <select class="tax-sel" style="font-size:11px"
+                    onchange="changeMasterCategory('${catKey}','${id}',this.value)">${catOpts}</select>
+          </div>
         </div>`;
       }).join('');
   // 損益入力項目セクション（食材費以外のカテゴリのみ）
@@ -1570,18 +1593,20 @@ function renderMasterCatContent() {
             </div>
             <input type="text" value="${esc}" placeholder="項目名"
                    oninput="updatePLItemLabel('${catKey}','${id}',this.value)">
-            <select class="tax-sel" ${itype==='excl'?'style="opacity:0.45"':''}
-                    onchange="updatePLItemTax('${catKey}','${id}',this.value)">
-              <option value="0.10"${tax===0.10?' selected':''}>10%</option>
-              <option value="0.08"${tax===0.08?' selected':''}>8%</option>
-              <option value="0"${tax===0?' selected':''}>非課税</option>
-            </select>
-            <button class="type-btn ${itype}" onclick="updatePLItemInputType('${catKey}','${id}')">
-              ${itype==='excl'?'税抜き':'税込み'}
-            </button>
-            <select class="tax-sel" style="font-size:11px"
-                    onchange="changePLItemCategory('${catKey}','${id}',this.value)">${catOpts}</select>
             <button class="btn-del" onclick="deletePLItem('${catKey}','${id}')">✕</button>
+            <div class="sup-sub">
+              <select class="tax-sel" ${itype==='excl'?'style="opacity:0.45"':''}
+                      onchange="updatePLItemTax('${catKey}','${id}',this.value)">
+                <option value="0.10"${tax===0.10?' selected':''}>10%</option>
+                <option value="0.08"${tax===0.08?' selected':''}>8%</option>
+                <option value="0"${tax===0?' selected':''}>非課税</option>
+              </select>
+              <button class="type-btn ${itype}" onclick="updatePLItemInputType('${catKey}','${id}')">
+                ${itype==='excl'?'税抜き':'税込み'}
+              </button>
+              <select class="tax-sel" style="font-size:11px"
+                      onchange="changePLItemCategory('${catKey}','${id}',this.value)">${catOpts}</select>
+            </div>
           </div>`;
         }).join('');
 
