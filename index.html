@@ -3290,14 +3290,23 @@ async function syncToCloud() {
   if (!CLOUD.url || !CLOUD.pwd) return;
   updateSyncBadge('ing');
   try {
-    const allData = {};
+    const local = {};
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
-      if (k !== 'cloud_url' && k !== 'cloud_pwd') allData[k] = localStorage.getItem(k);
+      if (k !== 'cloud_url' && k !== 'cloud_pwd') local[k] = localStorage.getItem(k);
     }
+    // 送信前にクラウドの最新を取得してマージ（他ツールのキーを消さない）
+    let payload = local;
+    try {
+      const res0 = await fetch(`${CLOUD.url}?pwd=${encodeURIComponent(CLOUD.pwd)}`);
+      const cloud = await res0.json();
+      if (cloud && !cloud.error && typeof cloud === 'object') {
+        payload = Object.assign({}, cloud, local); // ローカル優先、クラウド固有キーは保持
+      }
+    } catch (e) { /* 取得失敗時はローカルのみ送信 */ }
     const res = await fetch(CLOUD.url, {
       method: 'POST',
-      body: JSON.stringify({ pwd: CLOUD.pwd, data: allData }),
+      body: JSON.stringify({ pwd: CLOUD.pwd, data: payload }),
     });
     const json = await res.json();
     if (json.error) throw new Error(json.error === 'unauthorized' ? 'パスワードエラー' : json.error);
