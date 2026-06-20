@@ -520,6 +520,24 @@
       font-size: 16px; font-weight: 700; color: #1a1a1a; margin: 4px 2px 10px;
       padding-left: 8px; border-left: 4px solid #e8b86d;
     }
+    /* 画面下部に固定される日付ナビ（スクロール中も常に操作可能） */
+    .day-nav {
+      position: fixed; left: 0; right: 0; bottom: 0; z-index: 90;
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      background: #fffdf7; border-top: 2px solid #e8b86d;
+      padding: 8px 14px;
+      box-shadow: 0 -3px 12px rgba(0,0,0,0.15);
+    }
+    .day-nav-btn {
+      background: #e8b86d; color: #5a3d1a; border: none; border-radius: 8px;
+      padding: 12px 18px; font-size: 15px; font-weight: 700; cursor: pointer;
+      white-space: nowrap; flex-shrink: 0;
+    }
+    .day-nav-btn:active { opacity: 0.6; }
+    .day-nav-date { font-size: 17px; font-weight: 700; color: #1a1a1a; text-align: center; line-height: 1.2; }
+    .day-nav-date small { display: block; font-size: 11px; font-weight: 400; color: #888; }
+    /* 下部バーに最終行が隠れないよう余白を確保 */
+    body { padding-bottom: 72px; }
 
     /* ===== 日次：入力行 ===== */
     .d-card { background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.08);
@@ -3521,6 +3539,22 @@ function renderCalendar() {
   </div>`;
 }
 function setDay(d) { currentDay = d; updateStoreBanner(); renderDaily(); }
+function changeDay(delta) {
+  const ys = document.getElementById('selYear'), ms = document.getElementById('selMonth');
+  let y = parseInt(ys.value), m = parseInt(ms.value), d = (currentDay || 1) + delta;
+  if (d < 1) {
+    m -= 1; if (m < 1) { m = 12; y -= 1; }
+    d = daysInMonth(y, m);
+  } else if (d > daysInMonth(y, m)) {
+    m += 1; if (m > 12) { m = 1; y += 1; }
+    d = 1;
+  }
+  if ([...ys.options].some(o => o.value === String(y))) ys.value = String(y);
+  ms.value = String(m);
+  currentDay = d;
+  updateStoreBanner();
+  renderDaily();
+}
 function shiftMonth(delta) {
   const ms = document.getElementById('selMonth'), ys = document.getElementById('selYear');
   let mo = parseInt(ms.value) + delta, yr = parseInt(ys.value);
@@ -3543,7 +3577,11 @@ function renderDaily() {
   ).join('');
   document.getElementById('mainPanel').innerHTML =
     `${renderCalendar()}
-     <div class="day-title">${y}年 ${m}月 ${currentDay}日（${dow}）</div>
+     <div class="day-nav">
+       <button class="day-nav-btn" onclick="changeDay(-1)">◀ 前日</button>
+       <div class="day-nav-date">${m}月${currentDay}日（${dow}）<small>${y}年</small></div>
+       <button class="day-nav-btn" onclick="changeDay(1)">翌日 ▶</button>
+     </div>
      <div class="inv-subtabs">${subnav}</div>
      <div id="dailyContent"></div>`;
   renderDailyContent();
