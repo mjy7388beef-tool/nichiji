@@ -623,10 +623,34 @@
       .store-banner-name { font-size: 18px; }
       .store-banner-date { font-size: 12px; }
     }
+    .store-banner-switch { font-size: 11px; font-weight: 400; opacity: 0.85; margin-left: 6px;
+      border: 1px solid rgba(255,255,255,0.6); border-radius: 4px; padding: 1px 6px; }
+    /* スタート（店舗選択）ページ */
+    .start-overlay {
+      display: none; position: fixed; inset: 0; z-index: 500;
+      background: #1a1a1a; overflow-y: auto;
+      align-items: center; justify-content: center; padding: 24px 16px;
+    }
+    .start-overlay.show { display: flex; }
+    .start-box { width: 100%; max-width: 520px; }
+    .start-title { color: #fff; font-size: 22px; font-weight: 700; text-align: center; }
+    .start-sub { color: #bbb; font-size: 14px; text-align: center; margin: 6px 0 22px; }
+    .start-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+    .start-btn {
+      border: none; border-radius: 12px; color: #fff; cursor: pointer;
+      padding: 16px 8px; font-size: 17px; font-weight: 700; font-family: inherit;
+      display: flex; flex-direction: column; align-items: center; gap: 4px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3); transition: transform 0.08s;
+      position: relative;
+    }
+    .start-btn:active { transform: scale(0.96); }
+    .start-btn .ico { font-size: 24px; }
+    .start-btn .last { position: absolute; top: 5px; right: 6px; font-size: 10px; font-weight: 700;
+      background: rgba(255,255,255,0.92); color: #1a1a1a; border-radius: 10px; padding: 1px 7px; }
     /* 店舗PINモーダル */
     .store-pin-overlay {
       display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.65);
-      z-index: 300; align-items: center; justify-content: center; padding: 16px;
+      z-index: 600; align-items: center; justify-content: center; padding: 16px;
     }
     .store-pin-overlay.show { display: flex; }
     .store-pin-modal {
@@ -781,10 +805,20 @@
   </div>
 </header>
 
-<div class="store-banner" id="storeBanner" onclick="document.getElementById('selStore').focus()">
+<div class="store-banner" id="storeBanner" onclick="showStartPage()" title="タップで店舗を切り替え">
   <span class="store-banner-icon">🏪</span>
   <span class="store-banner-name" id="storeBannerName">店舗</span>
   <span class="store-banner-date" id="storeBannerDate"></span>
+  <span class="store-banner-switch">切替 ⇄</span>
+</div>
+
+<!-- スタート（店舗選択）ページ -->
+<div class="start-overlay" id="startOverlay">
+  <div class="start-box">
+    <div class="start-title">日次管理ツール</div>
+    <div class="start-sub">担当する店舗を選んでください</div>
+    <div class="start-grid" id="startGrid"></div>
+  </div>
 </div>
 
 <nav class="main-tabs">
@@ -1309,6 +1343,36 @@ function updateStoreBanner() {
   name.textContent = store;
   const d = currentDay ? `${currentMonth()}月${currentDay}日` : `${currentMonth()}月`;
   date.textContent = `${currentYear()}年 ${d} を入力中`;
+}
+
+// ===== スタート（店舗選択）ページ =====
+function renderStartPage() {
+  const grid = document.getElementById('startGrid');
+  const sel  = document.getElementById('selStore');
+  const last = localStorage.getItem('last_store') || '';
+  grid.innerHTML = [...sel.querySelectorAll('option')].map(o => {
+    const val = o.value, label = o.textContent;
+    const color = STORE_COLORS[val] || '#555';
+    return `<button class="start-btn" style="background:${color}" onclick="pickStartStore('${val}')">
+      ${last === val ? '<span class="last">前回</span>' : ''}
+      <span class="ico">🏪</span>${label}
+    </button>`;
+  }).join('');
+}
+function showStartPage() {
+  renderStartPage();
+  document.getElementById('startOverlay').classList.add('show');
+}
+function pickStartStore(store) {
+  const sel = document.getElementById('selStore');
+  requireStoreAuth(store, () => {
+    sel.value = store;
+    _prevStoreValue = store;
+    localStorage.setItem('last_store', store);
+    document.getElementById('startOverlay').classList.remove('show');
+    currentTab = 'daily';
+    switchTab('daily');
+  });
 }
 
 function getStorePin(store) { return localStorage.getItem(`store_pin_${store}`) || ''; }
@@ -3414,6 +3478,7 @@ async function submitSetup() {
     toast('クラウドへの接続が完了しました ☁');
     initMasters();
     reload();
+    showStartPage();
   } catch (e) {
     setLoading(false);
     showSetupErr(`接続エラー: ${e.message}`);
@@ -3430,6 +3495,7 @@ function useOffline() {
   updateSyncBadge('off');
   initMasters();
   reload();
+  showStartPage();
 }
 
 function onSyncBadgeClick() {
@@ -4253,6 +4319,7 @@ function bootDailyDate() {
   }
   initMasters();
   reload();
+  showStartPage();
 })();
 
 // 伝票OCR：ファイル選択時にOCRを実行
