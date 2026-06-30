@@ -4008,24 +4008,32 @@ function renderMonthSum() {
   const { salesItems, foodItems, mgmtItems, laborItems } = categoryItemSets(store);
   const sum = (items, dd) => items.reduce((s, it) => s + ((dd && typeof dd[it.id]==='number')?dd[it.id]:0), 0);
 
+  // 税抜き換算：税込み入力→÷(1+税率)、税抜き入力→そのまま
+  const netOf = (it, dd) => {
+    const a = (dd && typeof dd[it.id]==='number') ? dd[it.id] : 0;
+    if (!a) return 0;
+    return (it.inputType === 'excl') ? a : a / (1 + (it.tax || 0));
+  };
+  const sumNet = (items, dd) => items.reduce((s, it) => s + netOf(it, dd), 0);
   // 純売上（税抜き）：売上は税込み入力なので 金額÷(1+税率)
   const salesNet = (dd) => salesItems.reduce((s, it) => {
     const a = (dd && typeof dd[it.id]==='number') ? dd[it.id] : 0;
     return s + a / (1 + (it.tax || 0));
   }, 0);
 
-  const subTotals = {}; // サブカテゴリid -> 材料費累計（'' = 未分類）
-  let rows = '', tS=0,tF=0,tM=0,tL=0,tNet=0, inputDays=0;
+  const subTotals = {}; // サブカテゴリid -> 材料費累計（税抜き）（'' = 未分類）
+  let rows = '', tS=0,tF=0,tM=0,tL=0,tNet=0,tFnet=0,tMnet=0, inputDays=0;
   for (let d=1; d<=dim; d++) {
     const dd = monthData[String(d)];
     const has = dd && Object.keys(dd).length > 0;
     if (has) inputDays++;
     const s=sum(salesItems,dd), f=sum(foodItems,dd), mg=sum(mgmtItems,dd), l=sum(laborItems,dd);
     tS+=s;tF+=f;tM+=mg;tL+=l; tNet+=salesNet(dd);
-    // 材料費をサブカテゴリ別に集計
+    tFnet+=sumNet(foodItems,dd); tMnet+=sumNet(mgmtItems,dd);
+    // 材料費をサブカテゴリ別に集計（税抜き）
     foodItems.forEach(it => {
-      const a = (dd && typeof dd[it.id]==='number') ? dd[it.id] : 0;
-      if (a) { const k = it.subcat || ''; subTotals[k] = (subTotals[k]||0) + a; }
+      const n = netOf(it, dd);
+      if (n) { const k = it.subcat || ''; subTotals[k] = (subTotals[k]||0) + n; }
     });
     const dow = '日月火水木金土'[new Date(parseInt(y),parseInt(m)-1,d).getDay()];
     rows += `<tr class="${has?'':'empty'}" onclick="gotoDay(${d})">
@@ -4034,7 +4042,7 @@ function renderMonthSum() {
   }
   const fmtc = n => n>0?fmt(n):'-';
 
-  // 材料費 サブカテゴリ内訳
+  // 材料費 サブカテゴリ内訳（税抜き）
   const subs = getFoodSubcats();
   const knownIds = new Set(subs.map(s => s.id));
   let unclassified = 0;
@@ -4042,15 +4050,15 @@ function renderMonthSum() {
   const breakdown = subs.map(sc => [sc.label || '（無名）', subTotals[sc.id] || 0])
     .concat(unclassified > 0 ? [['未分類', unclassified]] : [])
     .filter(([, v]) => v > 0);
-  const subBreakdownHtml = (tF > 0 && breakdown.length) ? `
+  const subBreakdownHtml = (tFnet > 0 && breakdown.length) ? `
     <div class="msum-cum" style="margin-top:-4px">
-      <div class="msum-cum-head">🍖 材料費の内訳（合計 ${fmt(tF)}）</div>
+      <div class="msum-cum-head">🍖 材料費の内訳（税抜き・合計 ${fmt(tFnet)}）</div>
       <div class="msum-sub-list">
         ${breakdown.map(([label, v]) => `
           <div class="msum-sub-row">
             <span class="msum-sub-name">${label}</span>
-            <span class="msum-sub-bar"><span style="width:${tF>0?Math.round(v/tF*100):0}%"></span></span>
-            <span class="msum-sub-val">${fmt(v)}<small>${tF>0?Math.round(v/tF*100):0}%</small></span>
+            <span class="msum-sub-bar"><span style="width:${tFnet>0?Math.round(v/tFnet*100):0}%"></span></span>
+            <span class="msum-sub-val">${fmt(v)}<small>${tFnet>0?Math.round(v/tFnet*100):0}%</small></span>
           </div>`).join('')}
       </div>
     </div>` : '';
@@ -4061,13 +4069,13 @@ function renderMonthSum() {
       <div class="msum-cum-grid">
         <div class="msum-cum-card gross"><span>総売上（税込み）</span><b>${fmt(tS)}</b></div>
         <div class="msum-cum-card net"><span>純売上（税抜き）</span><b>${fmt(tNet)}</b></div>
-        <div class="msum-cum-card"><span>材料費</span><b>${fmt(tF)}</b></div>
-        <div class="msum-cum-card"><span>管理費</span><b>${fmt(tM)}</b></div>
+        <div class="msum-cum-card"><span>材料費（税抜き）</span><b>${fmt(tFnet)}</b></div>
+        <div class="msum-cum-card"><span>管理費（税抜き）</span><b>${fmt(tMnet)}</b></div>
         <div class="msum-cum-card span2"><span>人件費</span><b>${fmt(tL)}</b></div>
       </div>
     </div>
     ${subBreakdownHtml}
-    <div class="info-note"><b>${store}</b> / ${y}年${m}月　日々の入力を集計。<br>行をクリックするとその日の入力画面へ移動します。</div>
+    <div class="info-note"><b>${store}</b> / ${y}年${m}月　日々の入力を集計。<br>累計と内訳は<b>税抜き</b>で計算。下の日別表は<b>税込み</b>（入力したまま）です。行をクリックするとその日の入力画面へ移動します。</div>
     <table class="msum-table">
       <thead><tr><th>日</th><th>総売上</th><th>材料費</th><th>管理費</th><th>人件費</th></tr></thead>
       <tbody>${rows}
