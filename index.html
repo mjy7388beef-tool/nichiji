@@ -579,6 +579,17 @@
     .msum-table tr:not(.empty):hover td { background: #fdf6e9; }
     .msum-table tr.empty td { color: #ccc; }
     .msum-table tr.total-row td { background: #f0f0ee; font-weight: 700; border-top: 2px solid #999; }
+    /* 月間集計：最上段の累計ブロック */
+    .msum-cum { background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+      margin-bottom: 12px; overflow: hidden; }
+    .msum-cum-head { background: #2d2d2d; color: #fff; padding: 8px 14px; font-weight: 700; font-size: 13px; }
+    .msum-cum-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: #ececec; }
+    .msum-cum-card { background: #fff; padding: 12px 14px; display: flex; flex-direction: column; gap: 3px; }
+    .msum-cum-card span { font-size: 12px; color: #777; }
+    .msum-cum-card b { font-size: 18px; color: #1a1a1a; }
+    .msum-cum-card.gross b { color: #1565c0; }
+    .msum-cum-card.net b { color: #2e7d32; font-size: 20px; }
+    .msum-cum-card.span2 { grid-column: 1 / -1; }
 
     /* ===== 伝票OCR ===== */
     .ocr-bar { margin-bottom: 10px; }
@@ -3896,13 +3907,19 @@ function renderMonthSum() {
   const { salesItems, foodItems, mgmtItems, laborItems } = categoryItemSets(store);
   const sum = (items, dd) => items.reduce((s, it) => s + ((dd && typeof dd[it.id]==='number')?dd[it.id]:0), 0);
 
-  let rows = '', tS=0,tF=0,tM=0,tL=0, inputDays=0;
+  // 純売上（税抜き）：売上は税込み入力なので 金額÷(1+税率)
+  const salesNet = (dd) => salesItems.reduce((s, it) => {
+    const a = (dd && typeof dd[it.id]==='number') ? dd[it.id] : 0;
+    return s + a / (1 + (it.tax || 0));
+  }, 0);
+
+  let rows = '', tS=0,tF=0,tM=0,tL=0,tNet=0, inputDays=0;
   for (let d=1; d<=dim; d++) {
     const dd = monthData[String(d)];
     const has = dd && Object.keys(dd).length > 0;
     if (has) inputDays++;
     const s=sum(salesItems,dd), f=sum(foodItems,dd), mg=sum(mgmtItems,dd), l=sum(laborItems,dd);
-    tS+=s;tF+=f;tM+=mg;tL+=l;
+    tS+=s;tF+=f;tM+=mg;tL+=l; tNet+=salesNet(dd);
     const dow = '日月火水木金土'[new Date(parseInt(y),parseInt(m)-1,d).getDay()];
     rows += `<tr class="${has?'':'empty'}" onclick="gotoDay(${d})">
       <td>${d}(${dow})</td>
@@ -3910,9 +3927,19 @@ function renderMonthSum() {
   }
   const fmtc = n => n>0?fmt(n):'-';
   document.getElementById('mainPanel').innerHTML = `
-    <div class="info-note"><b>${store}</b> / ${y}年${m}月　日々の入力を集計（入力日数：${inputDays}日）。<br>行をクリックするとその日の入力画面へ移動します。</div>
+    <div class="msum-cum">
+      <div class="msum-cum-head">📊 ${y}年${m}月 累計（入力 ${inputDays}日）</div>
+      <div class="msum-cum-grid">
+        <div class="msum-cum-card gross"><span>総売上（税込み）</span><b>${fmt(tS)}</b></div>
+        <div class="msum-cum-card net"><span>純売上（税抜き）</span><b>${fmt(tNet)}</b></div>
+        <div class="msum-cum-card"><span>材料費</span><b>${fmt(tF)}</b></div>
+        <div class="msum-cum-card"><span>管理費</span><b>${fmt(tM)}</b></div>
+        <div class="msum-cum-card span2"><span>人件費</span><b>${fmt(tL)}</b></div>
+      </div>
+    </div>
+    <div class="info-note"><b>${store}</b> / ${y}年${m}月　日々の入力を集計。<br>行をクリックするとその日の入力画面へ移動します。</div>
     <table class="msum-table">
-      <thead><tr><th>日</th><th>売上計</th><th>材料費</th><th>管理費</th><th>人件費</th></tr></thead>
+      <thead><tr><th>日</th><th>総売上</th><th>材料費</th><th>管理費</th><th>人件費</th></tr></thead>
       <tbody>${rows}
         <tr class="total-row"><td>合計</td><td>${fmtc(tS)}</td><td>${fmtc(tF)}</td><td>${fmtc(tM)}</td><td>${fmtc(tL)}</td></tr>
       </tbody>
