@@ -590,6 +590,15 @@
     .msum-cum-card.gross b { color: #1565c0; }
     .msum-cum-card.net b { color: #2e7d32; font-size: 20px; }
     .msum-cum-card.span2 { grid-column: 1 / -1; }
+    /* 材料費サブカテゴリ内訳 */
+    .msum-sub-list { padding: 10px 14px; display: flex; flex-direction: column; gap: 8px; }
+    .msum-sub-row { display: grid; grid-template-columns: 64px 1fr auto; gap: 10px; align-items: center; }
+    .msum-sub-name { font-size: 13px; font-weight: 700; color: #444; }
+    .msum-sub-bar { background: #f0efe9; border-radius: 6px; height: 10px; overflow: hidden; }
+    .msum-sub-bar > span { display: block; height: 100%; background: #c0392b; border-radius: 6px; }
+    .msum-sub-val { font-size: 13px; font-weight: 700; color: #1a1a1a; white-space: nowrap; }
+    .msum-sub-val small { font-size: 11px; font-weight: 400; color: #888; margin-left: 5px; }
+    .subcat-sel { font-size: 11px; background: #fff7ec !important; border-color: #e8b86d !important; }
 
     /* ===== 伝票OCR ===== */
     .ocr-bar { margin-bottom: 10px; }
@@ -1509,6 +1518,56 @@ function saveMaster(catKey, sups) {
   localStorage.setItem(`master_${catKey}`, JSON.stringify(sups));
   scheduleSyncToCloud();
 }
+
+// ===== 材料費のサブカテゴリ（肉/食材/飲料…）：追加・変更・削除可能 =====
+const DEFAULT_FOOD_SUBCATS = [
+  { id: 'fsub_meat',  label: '肉' },
+  { id: 'fsub_food',  label: '食材' },
+  { id: 'fsub_drink', label: '飲料' },
+];
+function getFoodSubcats() {
+  const s = localStorage.getItem('food_subcats');
+  return s ? JSON.parse(s) : DEFAULT_FOOD_SUBCATS.map(x => ({ ...x }));
+}
+function saveFoodSubcats(list) {
+  localStorage.setItem('food_subcats', JSON.stringify(list));
+  scheduleSyncToCloud();
+}
+function addFoodSubcat() {
+  const list = getFoodSubcats();
+  list.push({ id: 'fsub_' + Date.now(), label: '' });
+  saveFoodSubcats(list);
+  renderMasterCatContent();
+}
+function renameFoodSubcat(id, label) {
+  const list = getFoodSubcats();
+  const it = list.find(x => x.id === id);
+  if (it) { it.label = label; saveFoodSubcats(list); }
+}
+function moveFoodSubcat(id, dir) {
+  const list = getFoodSubcats();
+  const i = list.findIndex(x => x.id === id);
+  const j = i + dir;
+  if (i < 0 || j < 0 || j >= list.length) return;
+  [list[i], list[j]] = [list[j], list[i]];
+  saveFoodSubcats(list);
+  renderMasterCatContent();
+}
+function deleteFoodSubcat(id) {
+  if (!confirm('このサブカテゴリを削除しますか？\n割り当て済みの取引先は「未分類」になります。')) return;
+  saveFoodSubcats(getFoodSubcats().filter(x => x.id !== id));
+  renderMasterCatContent();
+}
+function updateSupSubcat(supId, subId) {
+  const sups = getMaster('food');
+  const s = sups.find(x => x.id === supId);
+  if (s) { s.subcat = subId; saveMaster('food', sups); }
+}
+function foodSubcatLabel(id) {
+  if (!id) return '未分類';
+  const it = getFoodSubcats().find(x => x.id === id);
+  return it ? (it.label || '（無名）') : '未分類';
+}
 function getActive(store, catKey) {
   const s = localStorage.getItem(`active_${store}_${catKey}`);
   return s ? JSON.parse(s) : null; // null = 未設定（全有効）
@@ -1830,17 +1889,23 @@ function onToggleActiveSales(store, id) {
   renderSalesMasterContent();
 }
 function renderMasterCatContent() {
+  if (!document.getElementById('masterCatContent')) return;
   const catKey = currentMasterCat;
   const cat  = INVOICE_CATS.find(c => c.key === catKey);
   const sups = getMaster(catKey);
   const rowsHtml = sups.length === 0
     ? `<div class="empty-sup">未登録です。「＋ 取引先を追加」で追加してください。</div>`
-    : sups.map(({ id, label, tax, inputType }, idx) => {
+    : sups.map(({ id, label, tax, inputType, subcat }, idx) => {
         const itype = inputType || 'incl';
         const esc = label.replace(/"/g, '&quot;');
         const catOpts = INVOICE_CATS.map(c =>
           `<option value="${c.key}"${c.key===catKey?' selected':''}>${c.label}</option>`
         ).join('');
+        const subSelect = catKey === 'food' ? `
+            <select class="tax-sel subcat-sel" onchange="updateSupSubcat('${id}',this.value)" title="サブカテゴリ">
+              <option value="">未分類</option>
+              ${getFoodSubcats().map(sc => `<option value="${sc.id}"${(subcat||'')===sc.id?' selected':''}>${sc.label||'（無名）'}</option>`).join('')}
+            </select>` : '';
         return `<div class="sup-row">
           <div class="move-btns">
             <button class="btn-move" onclick="moveMasterSupUp('${catKey}','${id}')" ${idx===0?'style="opacity:0.25;cursor:default"':''} title="上へ">▲</button>
@@ -1861,6 +1926,7 @@ function renderMasterCatContent() {
             </button>
             <select class="tax-sel" style="font-size:11px"
                     onchange="changeMasterCategory('${catKey}','${id}',this.value)">${catOpts}</select>
+            ${subSelect}
           </div>
         </div>`;
       }).join('');
@@ -2023,8 +2089,43 @@ function renderMasterCatContent() {
       ${computedStoreSection}`;
   }
 
+  // 材料費のサブカテゴリ管理カード（食材費のみ）
+  let foodSubcatSection = '';
+  if (catKey === 'food') {
+    const subs = getFoodSubcats();
+    const subRows = subs.length === 0
+      ? `<div class="empty-sup">サブカテゴリ未登録です。「＋ サブカテゴリを追加」で追加してください。</div>`
+      : subs.map(({ id, label }, idx) => {
+          const esc = (label || '').replace(/"/g, '&quot;');
+          return `<div class="sup-row" style="grid-template-columns:40px 1fr 32px;grid-template-areas:'move label del'">
+            <div class="move-btns">
+              <button class="btn-move" onclick="moveFoodSubcat('${id}',-1)" ${idx===0?'style="opacity:0.25;cursor:default"':''} title="上へ">▲</button>
+              <button class="btn-move" onclick="moveFoodSubcat('${id}',1)" ${idx===subs.length-1?'style="opacity:0.25;cursor:default"':''} title="下へ">▼</button>
+            </div>
+            <input type="text" value="${esc}" placeholder="サブカテゴリ名（例：肉）"
+                   oninput="renameFoodSubcat('${id}',this.value)">
+            <button class="btn-del" onclick="deleteFoodSubcat('${id}')">✕</button>
+          </div>`;
+        }).join('');
+    foodSubcatSection = `
+      <div class="card">
+        <div class="card-header" style="cursor:default">
+          <span class="title">材料費のサブカテゴリ</span>
+          <span class="subtotal">${subs.length}件</span>
+        </div>
+        <div class="card-body">
+          <div style="font-size:11px;color:#888;margin-bottom:8px">
+            ※ 肉・食材・飲料などの分類です。自由に追加・名称変更・削除できます。<br>
+            各取引先の「サブカテゴリ」欄で割り当てると、月間集計に内訳が表示されます。
+          </div>
+          ${subRows}
+          <button class="btn-add-sup" onclick="addFoodSubcat()">＋ サブカテゴリを追加</button>
+        </div>
+      </div>`;
+  }
+
   document.getElementById('masterCatContent').innerHTML =
-    `<div class="card">
+    `${foodSubcatSection}<div class="card">
        <div class="card-header" style="cursor:default">
          <span class="title">${cat.label} 取引先マスタ（全店舗共通）</span>
          <span class="subtotal">${sups.length}件</span>
@@ -3913,6 +4014,7 @@ function renderMonthSum() {
     return s + a / (1 + (it.tax || 0));
   }, 0);
 
+  const subTotals = {}; // サブカテゴリid -> 材料費累計（'' = 未分類）
   let rows = '', tS=0,tF=0,tM=0,tL=0,tNet=0, inputDays=0;
   for (let d=1; d<=dim; d++) {
     const dd = monthData[String(d)];
@@ -3920,12 +4022,39 @@ function renderMonthSum() {
     if (has) inputDays++;
     const s=sum(salesItems,dd), f=sum(foodItems,dd), mg=sum(mgmtItems,dd), l=sum(laborItems,dd);
     tS+=s;tF+=f;tM+=mg;tL+=l; tNet+=salesNet(dd);
+    // 材料費をサブカテゴリ別に集計
+    foodItems.forEach(it => {
+      const a = (dd && typeof dd[it.id]==='number') ? dd[it.id] : 0;
+      if (a) { const k = it.subcat || ''; subTotals[k] = (subTotals[k]||0) + a; }
+    });
     const dow = '日月火水木金土'[new Date(parseInt(y),parseInt(m)-1,d).getDay()];
     rows += `<tr class="${has?'':'empty'}" onclick="gotoDay(${d})">
       <td>${d}(${dow})</td>
       <td>${s?fmt(s):'-'}</td><td>${f?fmt(f):'-'}</td><td>${mg?fmt(mg):'-'}</td><td>${l?fmt(l):'-'}</td></tr>`;
   }
   const fmtc = n => n>0?fmt(n):'-';
+
+  // 材料費 サブカテゴリ内訳
+  const subs = getFoodSubcats();
+  const knownIds = new Set(subs.map(s => s.id));
+  let unclassified = 0;
+  Object.entries(subTotals).forEach(([k, v]) => { if (!knownIds.has(k)) unclassified += v; });
+  const breakdown = subs.map(sc => [sc.label || '（無名）', subTotals[sc.id] || 0])
+    .concat(unclassified > 0 ? [['未分類', unclassified]] : [])
+    .filter(([, v]) => v > 0);
+  const subBreakdownHtml = (tF > 0 && breakdown.length) ? `
+    <div class="msum-cum" style="margin-top:-4px">
+      <div class="msum-cum-head">🍖 材料費の内訳（合計 ${fmt(tF)}）</div>
+      <div class="msum-sub-list">
+        ${breakdown.map(([label, v]) => `
+          <div class="msum-sub-row">
+            <span class="msum-sub-name">${label}</span>
+            <span class="msum-sub-bar"><span style="width:${tF>0?Math.round(v/tF*100):0}%"></span></span>
+            <span class="msum-sub-val">${fmt(v)}<small>${tF>0?Math.round(v/tF*100):0}%</small></span>
+          </div>`).join('')}
+      </div>
+    </div>` : '';
+
   document.getElementById('mainPanel').innerHTML = `
     <div class="msum-cum">
       <div class="msum-cum-head">📊 ${y}年${m}月 累計（入力 ${inputDays}日）</div>
@@ -3937,6 +4066,7 @@ function renderMonthSum() {
         <div class="msum-cum-card span2"><span>人件費</span><b>${fmt(tL)}</b></div>
       </div>
     </div>
+    ${subBreakdownHtml}
     <div class="info-note"><b>${store}</b> / ${y}年${m}月　日々の入力を集計。<br>行をクリックするとその日の入力画面へ移動します。</div>
     <table class="msum-table">
       <thead><tr><th>日</th><th>総売上</th><th>材料費</th><th>管理費</th><th>人件費</th></tr></thead>
