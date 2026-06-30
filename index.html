@@ -4337,22 +4337,8 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('input[type="number"]').forEach(el => {
     el.setAttribute('inputmode', 'decimal');
   });
-  // 起動時の店舗PIN確認
-  const initStore = document.getElementById('selStore').value;
-  _prevStoreValue = initStore;
-  requireStoreAuth(initStore,
-    () => { _authedStores.add(initStore); },
-    () => {
-      // PIN拒否 → PINなしの最初の店舗へ切替
-      const fallback = Object.keys(STORE_CONFIG).find(s => !getStorePin(s));
-      if (fallback) {
-        document.getElementById('selStore').value = fallback;
-        _prevStoreValue = fallback;
-        _authedStores.add(fallback);
-        reload();
-      }
-    }
-  );
+  // 店舗選択とPIN認証はスタート画面（pickStartStore）が担うため、
+  // 起動時の既定店舗の自動PIN認証は行わない。
 });
 // 動的に生成される入力欄にも適用（MutationObserver）
 new MutationObserver(mutations => {
