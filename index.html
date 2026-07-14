@@ -3480,27 +3480,35 @@ function scheduleSyncToCloud() {
   _syncTimer = setTimeout(syncToCloud, 900);
 }
 
+// このツール（日次管理）が管理しないキー＝損益管理ツール専用。同期時に触らない。
+function _notOwnedByThisTool(k) {
+  return /^(pl_|inv_|inv2_)/.test(k);
+}
 async function syncToCloud() {
   if (!CLOUD.url || !CLOUD.pwd) return;
   updateSyncBadge('ing');
   try {
-    const local = {};
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k !== 'cloud_url' && k !== 'cloud_pwd') local[k] = localStorage.getItem(k);
-    }
-    // 送信前にクラウドの最新を取得してマージ（他ツールのキーを消さない）
-    let payload = local;
+    // 送信前に必ずクラウドの最新を取得（取得できなければ中止：全置換で他データを消さないため）
+    let cloud;
     try {
       const res0 = await fetch(`${CLOUD.url}?pwd=${encodeURIComponent(CLOUD.pwd)}`);
-      const cloud = await res0.json();
-      if (cloud && !cloud.error && typeof cloud === 'object') {
-        payload = Object.assign({}, cloud, local); // ローカル優先、クラウド固有キーは保持
-      }
-    } catch (e) { /* 取得失敗時はローカルのみ送信 */ }
+      cloud = await res0.json();
+      if (!cloud || cloud.error || typeof cloud !== 'object') throw new Error('cloud fetch failed');
+    } catch (e) {
+      updateSyncBadge('err');   // クラウドを読めない時は同期を見送る（データ保護優先）
+      return;
+    }
+    // クラウドを土台に、このツールが管理するキーだけを自分の値で更新
+    const merged = Object.assign({}, cloud);
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k === 'cloud_url' || k === 'cloud_pwd') continue;
+      if (_notOwnedByThisTool(k)) continue;  // 損益専用キー（pl_/inv_/inv2_）は上書きしない
+      merged[k] = localStorage.getItem(k);
+    }
     const res = await fetch(CLOUD.url, {
       method: 'POST',
-      body: JSON.stringify({ pwd: CLOUD.pwd, data: payload }),
+      body: JSON.stringify({ pwd: CLOUD.pwd, data: merged }),
     });
     const json = await res.json();
     if (json.error) throw new Error(json.error === 'unauthorized' ? 'パスワードエラー' : json.error);
