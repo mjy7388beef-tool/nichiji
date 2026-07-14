@@ -3484,34 +3484,57 @@ function scheduleSyncToCloud() {
 function _notOwnedByThisTool(k) {
   return /^(pl_|inv_|inv2_)/.test(k);
 }
+
+// ===== 差分同期：自分が変更したキーだけをクラウドへ送る（v2プロトコル）=====
+// ・localStorage.setItem/removeItem を監視し「変更キー」を記録
+// ・同期時は変更キーだけをGASへ送信 → GAS側がキー単位でマージ
+// ・これにより「古い端末が全データを丸ごと上書きする」事故が構造的に起きない
+let _suspendDirty = false;   // クラウド→ローカル反映中は変更として扱わない
+const _DIRTY_SKIP = new Set(['cloud_url', 'cloud_pwd', '_dirty_keys']);
+const _dirtyKeys = new Set(JSON.parse(localStorage.getItem('_dirty_keys') || '[]'));
+(function patchStorageForDirtyTracking() {
+  const oset = Storage.prototype.setItem.bind(localStorage);
+  const orem = Storage.prototype.removeItem.bind(localStorage);
+  const mark = k => {
+    if (_suspendDirty || _DIRTY_SKIP.has(k) || _notOwnedByThisTool(k)) return;
+    _dirtyKeys.add(k);
+    oset('_dirty_keys', JSON.stringify([..._dirtyKeys]));
+  };
+  localStorage.setItem = function (k, v) { oset(k, v); mark(k); };
+  localStorage.removeItem = function (k) { orem(k); mark(k); };
+})();
+function _clearDirty() {
+  _dirtyKeys.clear();
+  localStorage.setItem('_dirty_keys', '[]');
+}
+function _markAllOwnedDirty() {
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (!_DIRTY_SKIP.has(k) && !_notOwnedByThisTool(k)) _dirtyKeys.add(k);
+  }
+  localStorage.setItem('_dirty_keys', JSON.stringify([..._dirtyKeys]));
+}
+
 async function syncToCloud() {
   if (!CLOUD.url || !CLOUD.pwd) return;
+  if (_dirtyKeys.size === 0) { updateSyncBadge('ok'); return; }
   updateSyncBadge('ing');
   try {
-    // 送信前に必ずクラウドの最新を取得（取得できなければ中止：全置換で他データを消さないため）
-    let cloud;
-    try {
-      const res0 = await fetch(`${CLOUD.url}?pwd=${encodeURIComponent(CLOUD.pwd)}`);
-      cloud = await res0.json();
-      if (!cloud || cloud.error || typeof cloud !== 'object') throw new Error('cloud fetch failed');
-    } catch (e) {
-      updateSyncBadge('err');   // クラウドを読めない時は同期を見送る（データ保護優先）
-      return;
-    }
-    // クラウドを土台に、このツールが管理するキーだけを自分の値で更新
-    const merged = Object.assign({}, cloud);
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k === 'cloud_url' || k === 'cloud_pwd') continue;
-      if (_notOwnedByThisTool(k)) continue;  // 損益専用キー（pl_/inv_/inv2_）は上書きしない
-      merged[k] = localStorage.getItem(k);
-    }
+    const changes = {};
+    [..._dirtyKeys].forEach(k => {
+      if (_DIRTY_SKIP.has(k) || _notOwnedByThisTool(k)) return;
+      const v = localStorage.getItem(k);
+      changes[k] = (v === null) ? null : v;   // null = クラウド側でも削除
+    });
     const res = await fetch(CLOUD.url, {
       method: 'POST',
-      body: JSON.stringify({ pwd: CLOUD.pwd, data: merged }),
+      body: JSON.stringify({ pwd: CLOUD.pwd, v: 2, changes }),
     });
     const json = await res.json();
+    if (json.error === 'update_required')
+      throw new Error('クラウドが新しい同期方式です。ページを再読み込みしてください');
     if (json.error) throw new Error(json.error === 'unauthorized' ? 'パスワードエラー' : json.error);
+    _clearDirty();
     updateSyncBadge('ok');
   } catch (e) {
     updateSyncBadge('err');
@@ -3527,14 +3550,18 @@ async function loadFromCloud() {
     const json = await res.json();
     if (json.error) throw new Error(json.error === 'unauthorized' ? 'パスワードが違います' : json.error);
     if (Object.keys(json).length === 0) {
-      // クラウドが空 → ローカルデータをアップロード
+      // クラウドが空 → ローカルデータを全て変更扱いにしてアップロード
       setLoading(true, 'ローカルデータをクラウドへ転送中…');
+      _markAllOwnedDirty();
       await syncToCloud();
     } else {
-      // クラウドにデータあり → ローカルを上書き
-      Object.entries(json).forEach(([k, v]) => {
-        if (k !== 'cloud_url' && k !== 'cloud_pwd') localStorage.setItem(k, v);
-      });
+      // クラウドにデータあり → ローカルへ反映（変更キーとしては記録しない）
+      _suspendDirty = true;
+      try {
+        Object.entries(json).forEach(([k, v]) => {
+          if (k !== 'cloud_url' && k !== 'cloud_pwd' && k !== '_dirty_keys') localStorage.setItem(k, v);
+        });
+      } finally { _suspendDirty = false; }
     }
     setLoading(false);
     updateSyncBadge('ok');
@@ -3586,11 +3613,15 @@ async function submitSetup() {
     // クラウドにデータがあればローカルに展開、なければアップロード
     if (Object.keys(json).length === 0) {
       setLoading(true, 'ローカルデータをクラウドへ転送中…');
+      _markAllOwnedDirty();
       await syncToCloud();
     } else {
-      Object.entries(json).forEach(([k, v]) => {
-        if (k !== 'cloud_url' && k !== 'cloud_pwd') localStorage.setItem(k, v);
-      });
+      _suspendDirty = true;
+      try {
+        Object.entries(json).forEach(([k, v]) => {
+          if (k !== 'cloud_url' && k !== 'cloud_pwd' && k !== '_dirty_keys') localStorage.setItem(k, v);
+        });
+      } finally { _suspendDirty = false; }
     }
     setLoading(false);
     hideSetupModal();
