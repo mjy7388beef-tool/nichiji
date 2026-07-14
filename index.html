@@ -401,6 +401,14 @@
     }
     .select-label input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; accent-color: #e8b86d; }
     .select-name { font-size: 13px; }
+    /* 店舗別サブネーム入力欄 */
+    .subname-input {
+      width: 100%; margin: 4px 0 2px 24px; max-width: calc(100% - 24px);
+      padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px;
+      font-size: 12px; font-family: inherit; color: #1a1a1a;
+      background: #fffdf7;
+    }
+    .subname-input:focus { outline: none; border-color: #e8b86d; box-shadow: 0 0 0 2px rgba(232,184,109,0.2); }
 
     .inv-badge {
       display: inline-block; font-size: 10px;
@@ -1517,6 +1525,30 @@ function getMaster(catKey) {
 function saveMaster(catKey, sups) {
   localStorage.setItem(`master_${catKey}`, JSON.stringify(sups));
   scheduleSyncToCloud();
+}
+
+// ===== 店舗別サブネーム（例：関西電力 → X店は「_01234567」、Y店は「_87654321」）=====
+// マスタの取引先は1件のまま。金額は元々店舗ごとに別保存なので衝突しない。
+function getSubnames(store) {
+  const s = localStorage.getItem(`subnames_${store}`);
+  return s ? JSON.parse(s) : {};
+}
+function setSubname(store, id, name) {
+  const m = getSubnames(store);
+  const v = (name || '').trim();
+  if (v) m[id] = v; else delete m[id];
+  localStorage.setItem(`subnames_${store}`, JSON.stringify(m));
+  scheduleSyncToCloud();
+}
+// 表示用ラベル：サブネームがあれば「取引先名_サブネーム」
+function subLabel(store, id, base) {
+  const b = base || '（名称未設定）';
+  const sn = getSubnames(store)[id];
+  return sn ? `${b}_${sn}` : b;
+}
+function onSubnameInput(store, id, val) {
+  setSubname(store, id, val);
+  renderDailyContent();
 }
 
 // ===== 材料費のサブカテゴリ（肉/食材/飲料…）：追加・変更・削除可能 =====
@@ -3823,7 +3855,7 @@ function dailyRowHtml(item, dayData, monthData, inputDays) {
   const cumLine = cum > 0 ? `月累計 <b>${fmt(cum)}</b>　平均 ${fmt(avg)}` : '月累計 —';
   return `<div class="d-row">
     <div class="d-label">
-      <span class="d-name">${item.label || '（名称未設定）'}</span>
+      <span class="d-name">${subLabel(currentStore(), item.id, item.label)}</span>
       <span class="tax-tag">${taxLbl}</span>
       <span class="type-tag ${itype}">${typeLbl}</span>
     </div>
@@ -3861,6 +3893,7 @@ function buildDailySelectPanel(store, catKey) {
       const on     = isActive(store, catKey, id);
       const taxLbl = tax === 0 ? '非課税' : `${(tax*100).toFixed(0)}%`;
       const itype  = inputType || 'incl';
+      const sn = (getSubnames(store)[id] || '').replace(/"/g,'&quot;');
       return `<div class="select-row">
         <label class="select-label">
           <input type="checkbox" ${on?'checked':''} onchange="onToggleDailyActive('${store}','${catKey}','${id}')">
@@ -3868,6 +3901,8 @@ function buildDailySelectPanel(store, catKey) {
           <span class="tax-tag">${taxLbl}</span>
           ${itypeBtn(id, itype)}
         </label>
+        <input type="text" class="subname-input" value="${sn}" placeholder="＿サブネーム（例：01234567）"
+               onchange="onSubnameInput('${store}','${id}',this.value)">
       </div>`;
     }).join('');
   }
@@ -3878,6 +3913,7 @@ function buildDailySelectPanel(store, catKey) {
       const on     = isActivePLItem(store, catKey, id);
       const taxLbl = tax === 0 ? '非課税' : `${(tax*100).toFixed(0)}%`;
       const itype  = inputType || 'incl';
+      const sn = (getSubnames(store)[id] || '').replace(/"/g,'&quot;');
       return `<div class="select-row">
         <label class="select-label">
           <input type="checkbox" ${on?'checked':''} onchange="onToggleDailyActivePL('${store}','${catKey}','${id}')">
@@ -3885,6 +3921,8 @@ function buildDailySelectPanel(store, catKey) {
           <span class="tax-tag">${taxLbl}</span>
           ${itypeBtn(id, itype)}
         </label>
+        <input type="text" class="subname-input" value="${sn}" placeholder="＿サブネーム（例：01234567）"
+               onchange="onSubnameInput('${store}','${id}',this.value)">
       </div>`;
     }).join('');
   }
