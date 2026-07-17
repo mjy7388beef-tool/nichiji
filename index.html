@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>日次管理ツール</title>
-  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  <!-- Excel出力は損益管理ツール側の担当。こちらでは XLSX を使わないため読み込まない。 -->
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -447,7 +447,14 @@
     .sync-badge.show { display: inline-flex; }
     .sync-badge.ok  { background: rgba(46,125,50,0.25); color: #81c784; }
     .sync-badge.ing { background: rgba(232,184,109,0.2); color: #e8b86d; }
-    .sync-badge.err { background: rgba(198,40,40,0.25); color: #ef9a9a; cursor: pointer; }
+    /* 未送信あり＝閉じると消える可能性がある状態。はっきり目立たせる */
+    .sync-badge.err {
+      background: #c62828; color: #fff; cursor: pointer; font-weight: 700;
+      animation: syncPulse 1.4s ease-in-out infinite;
+    }
+    @keyframes syncPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.55; } }
+    /* クラウド未接続（このデバイスにしか保存されない）。隠さず伝える */
+    .sync-badge.off { background: rgba(255,255,255,0.10); color: #9a9a9a; display: inline-flex; }
 
     /* ローディングオーバーレイ */
     .loading-overlay {
@@ -943,8 +950,6 @@
 </div>
 
 <script>
-const MONTHS = [4,5,6,7,8,9,10,11,12,1,2,3];
-const MONTH_JP = ['４月','５月','６月','７月','８月','９月','１０月','１１月','１２月','１月','２月','３月'];
 
 const INVOICE_CATS = [
   { key: 'food',  label: '食材費',   plSection: null },
@@ -956,25 +961,6 @@ const INVOICE_CATS = [
   { key: 'ad',    label: '広告費',   plSection: 'ad' },
 ];
 
-// ===== 共通アイテム =====
-const COGS_PREV_CURR = [
-  ['prevInv', '前月棚卸額'],
-  ['currInv', '当月棚卸額'],
-];
-
-const SALES_BREAKDOWN_INPUTS = [
-  ['sales10', '売上(10%込み)'],
-  ['sales8',  '売上(8%込み)'],
-];
-const SALES_PAYMENT_BREAKDOWN = [
-  ['cash10',   '現金売上(10%込み)'],
-  ['cash8',    '現金売上(8%込み)'],
-  ['credit10', 'クレジット売上(10%込み)'],
-  ['credit8',  'クレジット売上(8%込み)'],
-  ['pay10',    'Pay売上(10%込み)'],
-  ['pay8',     'Pay売上(8%込み)'],
-  ['point10',  'ポイント売上(10%込み)'],
-];
 
 // ===== 店舗別 設定 =====
 // foodSuppliers: [key, label, taxRate]
@@ -1496,26 +1482,12 @@ function editStorePin(store) {
 }
 let currentDay = null;          // 選択中の日（1〜31）
 
-// 旧PL保存キー → 新支払いマスタIDの対応表（後方互換）
-const SALES_LEGACY_MAP = {
-  'pm_cash10':   'cash10',
-  'pm_cash8':    'cash8',
-  'pm_credit10': 'credit10',
-  'pm_credit8':  'credit8',
-  'pm_pay10':    'pay10',
-  'pm_pay8':     'pay8',
-  'pm_point10':  'point10',
-  'pm_ticket10': 'shoppingTicket10',
-};
 
 function currentStore() { return document.getElementById('selStore').value; }
 function currentMonth() { return document.getElementById('selMonth').value; }
 function currentYear()  { return document.getElementById('selYear').value; }
-function plKey() { return `pl_${currentYear()}_${currentStore()}_${currentMonth()}`; }
 
-function v(id) { const el = document.getElementById(id); return el ? (parseFloat(el.value) || 0) : 0; }
 function fmt(n) { return Math.round(n).toLocaleString('ja-JP') + ' 円'; }
-function pct(n) { return (n * 100).toFixed(1) + '%'; }
 
 // ===== マスタ管理 =====
 function getMaster(catKey) {
@@ -1595,11 +1567,6 @@ function updateSupSubcat(supId, subId) {
   const s = sups.find(x => x.id === supId);
   if (s) { s.subcat = subId; saveMaster('food', sups); }
 }
-function foodSubcatLabel(id) {
-  if (!id) return '未分類';
-  const it = getFoodSubcats().find(x => x.id === id);
-  return it ? (it.label || '（無名）') : '未分類';
-}
 function getActive(store, catKey) {
   const s = localStorage.getItem(`active_${store}_${catKey}`);
   return s ? JSON.parse(s) : null; // null = 未設定（全有効）
@@ -1631,9 +1598,6 @@ function getSuppliers(store, catKey) {
   const active = getActive(store, catKey);
   const list = active === null ? master : master.filter(s => new Set(active).has(s.id));
   return applyItypeOverride(store, list);
-}
-function hasInvoiceSetup(store, catKey) {
-  return getSuppliers(store, catKey).length > 0;
 }
 function isActive(store, catKey, id) {
   const active = getActive(store, catKey);
@@ -2244,16 +2208,6 @@ function updateMasterInputType(catKey, id) {
   renderMasterCatContent();
 }
 
-function getPLKeys(store) {
-  const keys = [];
-  getSalesMethodsForStore(store).forEach(({ id }) => keys.push(id));
-  COGS_PREV_CURR.forEach(([k]) => keys.push(k));
-  INVOICE_CATS.filter(c => c.plSection).forEach(({ key: catKey }) =>
-    getPLItemsMaster(catKey).forEach(({ id }) => keys.push(id))
-  );
-  keys.push('hqFee');
-  return keys;
-}
 
 // ===== 損益入力項目マスタ（変動費・家賃・人件費・備品・広告） =====
 function getPLItemsMaster(catKey) {
@@ -2412,827 +2366,6 @@ function togglePLItemSource(catKey, id, salesId) {
   savePLItemsMaster(catKey, items);
 }
 
-// ===== 請求書データ（フラット形式：カテゴリ不問で全取引先IDをキーに保存）=====
-function flatInvKey(store, month, year) {
-  return `inv2_${year}_${store}_${month}`;
-}
-
-function getInvData(store, month, year) {
-  // フラット形式で全取引先分を一括返却（catKeyは不要）
-  const key = flatInvKey(store, month, year);
-  const saved = localStorage.getItem(key);
-  if (saved) return JSON.parse(saved);
-  // ===== 後方互換：旧キー（カテゴリ別・旧食材費）をマージして自動移行 =====
-  const merged = {};
-  const oldFood = localStorage.getItem(`inv_${year}_${store}_${month}`);
-  if (oldFood) Object.assign(merged, JSON.parse(oldFood));
-  INVOICE_CATS.forEach(({ key: catKey }) => {
-    const old = localStorage.getItem(`inv_${year}_${store}_${month}_${catKey}`);
-    if (old) Object.assign(merged, JSON.parse(old));
-  });
-  if (Object.keys(merged).length > 0) {
-    localStorage.setItem(key, JSON.stringify(merged)); // 新形式へ自動移行
-  }
-  return merged;
-}
-
-function saveInvData(store, month, year, data) {
-  localStorage.setItem(flatInvKey(store, month, year), JSON.stringify(data));
-  scheduleSyncToCloud();
-}
-
-// ===== 請求書メモ =====
-function invMemoKey(store, month, year) {
-  return `inv_memo_${year}_${store}_${month}`;
-}
-function getInvMemos(store, month, year) {
-  const s = localStorage.getItem(invMemoKey(store, month, year));
-  return s ? JSON.parse(s) : {};
-}
-function saveInvMemos(store, month, year, memos) {
-  localStorage.setItem(invMemoKey(store, month, year), JSON.stringify(memos));
-  scheduleSyncToCloud();
-}
-function updateInvMemo(id, text) {
-  const store = currentStore(), month = currentMonth(), year = currentYear();
-  const memos = getInvMemos(store, month, year);
-  if (text.trim() === '') {
-    delete memos[id];
-  } else {
-    memos[id] = text;
-  }
-  saveInvMemos(store, month, year, memos);
-  // メモボタンの色を更新
-  const btn = document.getElementById(`memo-btn-${id}`);
-  if (btn) btn.classList.toggle('has-memo', text.trim() !== '');
-  flashSaved();
-}
-function toggleMemo(id) {
-  const area = document.getElementById(`memo-area-${id}`);
-  const btn  = document.getElementById(`memo-btn-${id}`);
-  if (!area) return;
-  const opening = !area.classList.contains('open');
-  area.classList.toggle('open', opening);
-  btn.title = opening ? 'メモを閉じる' : 'メモを追加・編集';
-  if (opening) area.querySelector('textarea').focus();
-}
-
-// ===== 損益メモ =====
-function plMemoKey(store, month, year) {
-  return `pl_memo_${year}_${store}_${month}`;
-}
-function getPLMemos(store, month, year) {
-  const s = localStorage.getItem(plMemoKey(store, month, year));
-  return s ? JSON.parse(s) : {};
-}
-function savePLMemos(store, month, year, memos) {
-  localStorage.setItem(plMemoKey(store, month, year), JSON.stringify(memos));
-  scheduleSyncToCloud();
-}
-function updatePLMemo(id, text) {
-  const store = currentStore(), month = currentMonth(), year = currentYear();
-  const memos = getPLMemos(store, month, year);
-  if (text.trim() === '') {
-    delete memos[id];
-  } else {
-    memos[id] = text;
-  }
-  savePLMemos(store, month, year, memos);
-  const btn = document.getElementById(`pl-memo-btn-${id}`);
-  if (btn) btn.classList.toggle('has-memo', text.trim() !== '');
-  flashSaved();
-}
-function togglePLMemo(id) {
-  const area = document.getElementById(`pl-memo-area-${id}`);
-  const btn  = document.getElementById(`pl-memo-btn-${id}`);
-  if (!area) return;
-  const opening = !area.classList.contains('open');
-  area.classList.toggle('open', opening);
-  btn.title = opening ? 'メモを閉じる' : 'メモを追加・編集';
-  if (opening) area.querySelector('textarea').focus();
-}
-
-// ===== 計算 =====
-function calcCatTotal(invData, sups) {
-  // 税抜き合計を返す
-  // inputType='incl'（税込み入力）→ 入力金額 ÷ (1+税率)
-  // inputType='excl'（税抜き入力）→ 入力金額をそのまま使用
-  return sups.reduce((s, { id, tax, inputType }) => {
-    const amt = invData[id] || 0;
-    return s + (inputType === 'excl' ? amt : amt / (1 + (tax || 0)));
-  }, 0);
-}
-
-function calcCatTotalIncl(invData, sups) {
-  // 税込み合計を返す（サマリー表示用）
-  // inputType='incl' → 入力金額がそのまま税込み
-  // inputType='excl' → 入力金額 × (1+税率) で税込みに変換
-  return sups.reduce((s, { id, tax, inputType }) => {
-    const amt = invData[id] || 0;
-    return s + (inputType === 'excl' ? amt * (1 + (tax || 0)) : amt);
-  }, 0);
-}
-
-// ===== 損益タブ：フォーム描画 =====
-function renderPLForm() {
-  const store = currentStore();
-  const cfg = STORE_CONFIG[store];
-  const plMemos = getPLMemos(store, currentMonth(), currentYear());
-
-  const memoWidget = (id) => {
-    const memo = plMemos[id] || '';
-    const hasMemo = memo.trim() !== '';
-    const memoEsc = memo.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
-    return {
-      btn: `<button id="pl-memo-btn-${id}" class="memo-btn${hasMemo?' has-memo':''}"
-              onclick="togglePLMemo('${id}')" title="${hasMemo?'メモあり（クリックで編集）':'メモを追加'}">💬</button>`,
-      area: `<div id="pl-memo-area-${id}" class="memo-area">
-               <textarea placeholder="補足メモ（修繕内容・購入品目など）"
-                         oninput="updatePLMemo('${id}',this.value)">${memoEsc}</textarea>
-             </div>`,
-    };
-  };
-
-  const inputRow = (k, label) => {
-    const { btn, area } = memoWidget(k);
-    return `<div class="pl-row-wrap">
-      <div class="row">
-        <label>${label}</label>
-        <div class="pl-input-cell"><input type="number" id="${k}" oninput="updatePL()">${btn}</div>
-      </div>${area}</div>`;
-  };
-  const calcRow = (k, label) =>
-    `<div class="row indent"><label>${label}（自動）</label><div class="calc" id="c-${k}">—</div></div>`;
-  const divider = (text) => `<div class="group-divider">${text}</div>`;
-  const card = (title, idSubtotal, body, badge) =>
-    `<div class="card">
-       <div class="card-header" onclick="toggle(this)">
-         <span class="title">${title}${badge ? `<span class="inv-badge">請求書連動</span>` : ''}</span>
-         <span class="subtotal" id="st-${idSubtotal}"></span>
-       </div>
-       <div class="card-body">${body}</div>
-     </div>`;
-
-  // カテゴリセクション（請求書連動 と 手動入力 を同時表示・両方合算）
-  const catSection = (catKey, title, plSection) => {
-    const hasSups  = getSuppliers(store, catKey).length > 0;
-    const plItems  = getPLItemsForStore(store, catKey);
-    let body = '';
-    if (hasSups) {
-      body +=
-        `<div class="row indent">
-           <label>請求書合計（税抜・自動）</label>
-           <div class="calc" id="c-inv-${catKey}">—</div>
-         </div>
-         <div class="row" style="font-size:11px;color:#888;padding:2px 0 6px">
-           <label></label>
-           <div>※ 請求書入力タブの税抜き合計が反映されます</div>
-         </div>`;
-    }
-    if (plItems.length > 0) {
-      if (hasSups) body += divider('手動入力');
-      body += plItems.map(item => {
-        if (item.type === 'computed' && getPLItemMode(store, item.id) === 'auto') {
-          const rateDisp = ((item.feeRate || 0) * 100).toFixed(1);
-          return `<div class="row indent">
-            <label>${item.label}<span class="tax-tag">売上×${rateDisp}%・自動</span></label>
-            <div class="calc" id="c-computed-${item.id}">—</div>
-          </div>`;
-        }
-        const itype  = item.inputType || 'incl';
-        const taxLbl = item.tax === 0 ? '非課税' : `${((item.tax||0)*100).toFixed(0)}%${itype==='excl'?'抜き':'込み'}`;
-        const { btn: mBtn, area: mArea } = memoWidget(item.id);
-        return `<div class="pl-row-wrap">
-          <div class="row">
-            <label>${item.label}<span class="tax-tag">${taxLbl}</span></label>
-            <div class="pl-input-cell"><input type="number" id="${item.id}" oninput="updatePL()">${mBtn}</div>
-          </div>${mArea}</div>`;
-      }).join('');
-    }
-    if (!hasSups && plItems.length === 0) {
-      body = `<div class="empty-sup">項目未設定。管理者がマスタ管理タブから設定してください。</div>`;
-    }
-    return card(title, plSection, body, hasSups);
-  };
-
-  const isNoSales = cfg.salesType === 'none';
-
-  // 売上（支払い方法別 → 合計は自動計算）※売上なし施設はスキップ
-  let salesCard = '';
-  let cogsCard = '';
-  if (!isNoSales) {
-    const salesMethods = getSalesMethodsForStore(store);
-    const sortedMethods = [...salesMethods].sort((a, b) => (b.tax||0) - (a.tax||0));
-    let salesBody = '';
-    if (sortedMethods.length === 0) {
-      salesBody = `<div class="empty-sup">売上項目が設定されていません。管理者がマスタ管理タブから設定してください。</div>`;
-    } else {
-      sortedMethods.forEach(({ id, label, tax }) => {
-        const taxLbl = tax === 0 ? '非課税' : `${(tax*100).toFixed(0)}%込み`;
-        const { btn: mBtn, area: mArea } = memoWidget(id);
-        salesBody += `<div class="pl-row-wrap">
-          <div class="row">
-            <label>${label}<span class="tax-tag">${taxLbl}</span></label>
-            <div class="pl-input-cell"><input type="number" id="${id}" oninput="updatePL()">${mBtn}</div>
-          </div>${mArea}</div>`;
-      });
-      salesBody += divider('自動集計');
-      salesBody += calcRow('soSales10', '売上(10%込み)合計');
-      salesBody += calcRow('soSales8',  '売上(8%込み)合計');
-      salesBody += calcRow('soSales',   '総売上');
-      salesBody += calcRow('netSales',  '純売上');
-      salesBody += calcRow('tax10',     '消費税10%');
-      salesBody += calcRow('tax8',      '消費税8%');
-    }
-    salesCard = card('売上', 'sales', salesBody);
-
-    // 売上原価
-    let cogsBody =
-      `<div class="row indent">
-         <label>食材合計仕入額（税抜・自動）</label>
-         <div class="calc" id="c-shizai">—</div>
-       </div>
-       <div class="row" style="font-size:11px;color:#888;padding:2px 0 6px">
-         <label></label>
-         <div>※ 請求書入力タブの税抜き合計が反映されます</div>
-       </div>`;
-    COGS_PREV_CURR.forEach(([k, l]) => cogsBody += inputRow(k, l));
-    cogsBody += calcRow('cogs', '売上原価');
-    cogsCard = card('売上原価', 'cogs', cogsBody);
-  }
-
-  // 売上なし施設向け：食材費のみ請求書連動で表示
-  const foodCard = isNoSales
-    ? card('食材費', 'food',
-        `<div class="row indent">
-           <label>食材合計仕入額（税抜・自動）</label>
-           <div class="calc" id="c-shizai">—</div>
-         </div>
-         <div class="row" style="font-size:11px;color:#888;padding:2px 0 6px">
-           <label></label>
-           <div>※ 請求書入力タブの税抜き合計が反映されます</div>
-         </div>`, true)
-    : '';
-
-  const html =
-    (isNoSales ? `<div style="background:#f0f4ff;border:1px solid #c0cfee;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:#4a6299">
-      🏭 この施設は売上管理対象外です。経費のみを入力してください。
-    </div>` : '') +
-    salesCard +
-    cogsCard +
-    foodCard +
-    catSection('fee',   '変動費',       'fee') +
-    catSection('labor', '人件費',       'labor') +
-    catSection('rent',     '家賃',         'rent') +
-    catSection('facility', '設備・管理費', 'facility') +
-    catSection('equip',    '営業備品雑費', 'equip') +
-    catSection('ad',    '広告宣伝費',   'ad') +
-    card('本部管理費', 'hq', inputRow('hqFee', '本部管理費'));
-
-  document.getElementById('mainPanel').innerHTML = html;
-
-  // 右パネル
-  document.getElementById('sidePanel').innerHTML = `
-    <div class="pl-card">
-      <div class="pl-head">損益サマリー</div>
-      <div class="pl-body" id="plBody"></div>
-    </div>
-    <button class="btn btn-export" onclick="exportExcel()">📥 Excelダウンロード（全店・全月）</button>
-    <button class="btn btn-clear" onclick="clearMonth()">この月のデータをクリア</button>
-  `;
-}
-
-// ===== 請求書入力タブ =====
-function renderInvoiceForm() {
-  const store = currentStore();
-  const subNav = INVOICE_CATS.map(c =>
-    `<button class="inv-subtab${c.key === currentInvCat ? ' active' : ''}"
-             onclick="switchInvCat('${c.key}')">${c.label}</button>`
-  ).join('');
-  document.getElementById('mainPanel').innerHTML =
-    `<div class="info-note">
-       <b>${store}</b> / ${currentMonth()}月　請求金額を入力してください。<br>
-       表示する取引先の変更は各カテゴリ下部の「取引先の表示設定」から。名前・税率・入力形式の変更は管理者が行います。
-     </div>
-     <div class="inv-subtabs">${subNav}</div>
-     <div id="invCatContent"></div>`;
-  document.getElementById('sidePanel').innerHTML = `
-    <button class="btn btn-export" onclick="exportExcel()">📥 Excelダウンロード（全店・全月）</button>
-    <button class="btn btn-clear" onclick="clearInvoiceMonth()">この月のデータをクリア</button>
-  `;
-  renderInvCatContent();
-}
-
-function renderInvCatContent() {
-  const store  = currentStore();
-  const month  = currentMonth();
-  const year   = currentYear();
-  const catKey = currentInvCat;
-  const cat    = INVOICE_CATS.find(c => c.key === catKey);
-  const master = getMaster(catKey);
-  const active = getSuppliers(store, catKey); // マスタ×アクティブ絞り込み済み
-  const invData = getInvData(store, month, year);
-
-  // 金額入力行（アクティブ取引先のみ・ラベルは読み取り専用）
-  const memos = getInvMemos(store, month, year);
-  const buildInvRow = (id, label, tax, inputType, invData, catKey) => {
-    const itype   = inputType || 'incl';
-    const taxLbl  = tax === 0 ? '非課税' : `${(tax*100).toFixed(0)}%`;
-    const ph      = itype === 'excl' ? '税抜金額' : '税込金額';
-    const memo    = memos[id] || '';
-    const hasMemo = memo.trim() !== '';
-    const memoEsc = memo.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
-    return `<div class="inv-row-wrap">
-      <div class="inv-row">
-        <div class="inv-label">
-          <span class="inv-name">${label || '（名称未設定）'}</span>
-          <span class="tax-tag">${taxLbl}</span>
-          <span class="type-tag ${itype}">${itype === 'excl' ? '税抜き' : '税込み'}</span>
-        </div>
-        <input type="number" value="${invData[id] !== undefined && invData[id] !== null ? invData[id] : ''}" min="0" placeholder="${ph}"
-               oninput="updateInvAmount('${catKey}','${id}',this.value)">
-        <button id="memo-btn-${id}" class="memo-btn${hasMemo?' has-memo':''}"
-                onclick="toggleMemo('${id}')" title="${hasMemo?'メモあり（クリックで編集）':'メモを追加'}">💬</button>
-      </div>
-      <div id="memo-area-${id}" class="memo-area">
-        <textarea placeholder="補足メモ（修繕内容・購入品目など）"
-                  oninput="updateInvMemo('${id}',this.value)">${memoEsc}</textarea>
-      </div>
-    </div>`;
-  };
-  const amtRows = active.length === 0
-    ? `<div class="empty-sup">表示中の取引先がありません。下の「取引先の表示設定」から追加してください。</div>`
-    : active.map(({ id, label, tax, inputType }) =>
-        buildInvRow(id, label, tax, inputType, invData, catKey)
-      ).join('');
-
-  // 表示設定パネル（マスタ全件 チェックボックス）
-  const selRows = master.length === 0
-    ? `<div style="color:#aaa;font-size:12px;padding:8px">マスタに取引先が登録されていません。管理者が「マスタ管理」タブから登録してください。</div>`
-    : master.map(({ id, label, tax }) => {
-        const on    = isActive(store, catKey, id);
-        const taxLbl = tax === 0 ? '非課税' : `${(tax*100).toFixed(0)}%`;
-        return `<div class="select-row">
-          <label class="select-label">
-            <input type="checkbox" ${on?'checked':''} onchange="onToggleActive('${store}','${catKey}','${id}')">
-            <span class="select-name">${label || '（名称未設定）'}</span>
-            <span class="tax-tag">${taxLbl}</span>
-          </label>
-        </div>`;
-      }).join('');
-
-  const incl    = calcCatTotalIncl(invData, active);
-  const excl    = calcCatTotal(invData, active);
-  const exclLbl = catKey === 'food' ? '食材合計仕入額（税抜き）' : `${cat.label}合計（税抜き）`;
-
-  document.getElementById('invCatContent').innerHTML =
-    `<div class="card">
-       <div class="card-header" style="cursor:default">
-         <span class="title">${cat.label}</span>
-         <span class="subtotal">${active.length}件</span>
-       </div>
-       <div class="card-body">${amtRows}</div>
-     </div>
-     <div class="invoice-summary">
-       <div class="row-line">
-         <span>請求金額合計（税込み換算）</span>
-         <span id="inv-incl">${incl > 0 ? fmt(incl) : '—'}</span>
-       </div>
-       <div class="row-line major">
-         <span>${exclLbl} → 損益へ反映</span>
-         <span id="inv-excl">${excl > 0 ? fmt(excl) : '—'}</span>
-       </div>
-     </div>
-     <div class="select-panel">
-       <div class="select-panel-head" onclick="toggleSelectPanel(this)">
-         ▶ 取引先の表示設定（この店舗のみ）
-       </div>
-       <div class="select-panel-body" style="display:none">${selRows}</div>
-     </div>`;
-}
-
-function switchInvCat(catKey) {
-  currentInvCat = catKey;
-  document.querySelectorAll('.inv-subtab').forEach(b => b.classList.remove('active'));
-  event.target.classList.add('active');
-  renderInvCatContent();
-}
-
-function onToggleActive(store, catKey, id) {
-  toggleActive(store, catKey, id);
-  // 表示設定パネルの開閉状態を保持しながら再描画
-  const panelBody = document.querySelector('#invCatContent .select-panel-body');
-  const panelHead = document.querySelector('#invCatContent .select-panel-head');
-  const wasOpen = panelBody ? panelBody.style.display !== 'none' : false;
-  renderInvCatContent();
-  if (wasOpen) {
-    const newBody = document.querySelector('#invCatContent .select-panel-body');
-    const newHead = document.querySelector('#invCatContent .select-panel-head');
-    if (newBody) newBody.style.display = '';
-    if (newHead) newHead.textContent = '▼ 取引先の表示設定（この店舗のみ）';
-  }
-}
-
-function toggleSelectPanel(head) {
-  const body = head.nextElementSibling;
-  const open = body.style.display !== 'none';
-  body.style.display = open ? 'none' : '';
-  head.textContent = (open ? '▶' : '▼') + ' 取引先の表示設定（この店舗のみ）';
-}
-
-function updateInvAmount(catKey, id, valStr) {
-  const store = currentStore();
-  const month = currentMonth(), year = currentYear();
-  const invData = getInvData(store, month, year);
-  if (valStr === '') {
-    invData[id] = null;  // 空欄 = 未入力
-  } else {
-    invData[id] = parseFloat(valStr) || 0;  // '0' → 0
-  }
-  saveInvData(store, month, year, invData);
-  updateInvTotals();
-  flashSaved();
-}
-
-function updateInvTotals() {
-  const store = currentStore();
-  const month = currentMonth(), year = currentYear();
-  const catKey = currentInvCat;
-  const sups = getSuppliers(store, catKey);
-  const invData = getInvData(store, month, year);
-  const inclEl = document.getElementById('inv-incl');
-  const exclEl = document.getElementById('inv-excl');
-  if (inclEl) inclEl.textContent = fmt(calcCatTotalIncl(invData, sups));
-  if (exclEl) exclEl.textContent = fmt(calcCatTotal(invData, sups));
-}
-
-function calcPL() {
-  const store = currentStore();
-  const month = currentMonth();
-  const year  = currentYear();
-  const cfg   = STORE_CONFIG[store];
-
-  // 支払い方法別に集計して売上を計算
-  let soSales = 0, soSales10 = 0, soSales8 = 0, netSales = 0, tax10 = 0, tax8 = 0;
-  getSalesMethodsForStore(store).forEach(({ id, tax }) => {
-    const amt = v(id);
-    soSales += amt;
-    if (tax === 0.10)      { soSales10 += amt; netSales += amt/1.1;  tax10 += amt - amt/1.1; }
-    else if (tax === 0.08) { soSales8  += amt; netSales += amt/1.08; tax8  += amt - amt/1.08; }
-    else                   { netSales  += amt; }
-  });
-
-  const invData  = getInvData(store, month, year); // フラット（全カテゴリ共通）
-  const foodSups = getSuppliers(store, 'food');
-  const shizai   = calcCatTotal(invData, foodSups);
-  const cogs     = shizai + v('prevInv') - v('currInv');
-
-  // 請求書合計（取引先ON/OFF済み）
-  function getInvCatTotal(catKey) {
-    return calcCatTotal(invData, getSuppliers(store, catKey));
-  }
-  // 手動入力 + 自動計算合計（この店舗でONの項目のみ）
-  function getManualCatTotal(catKey) {
-    return getPLItemsForStore(store, catKey).reduce((s, item) => {
-      if (item.type === 'computed') {
-        if (getPLItemMode(store, item.id) === 'auto') {
-          // 対象売上合計 × 手数料率（税込売上そのまま × rate）
-          const base = (item.sourceIds || []).reduce((ss, sid) => ss + v(sid), 0);
-          return s + base * (item.feeRate || 0);
-        } else {
-          // 手動入力モード：通常の税変換
-          const amt = v(item.id);
-          return s + (item.inputType === 'excl' ? amt : amt / (1 + (item.tax || 0)));
-        }
-      }
-      const amt = v(item.id);
-      return s + (item.inputType === 'excl' ? amt : amt / (1 + (item.tax || 0)));
-    }, 0);
-  }
-  // 両方の合算がカテゴリ合計
-  function getCatVal(catKey) {
-    return getInvCatTotal(catKey) + getManualCatTotal(catKey);
-  }
-
-  const fee      = getCatVal('fee');
-  const labor    = getCatVal('labor');
-  const rent     = getCatVal('rent');
-  const facility = getCatVal('facility');
-  const equip    = getCatVal('equip');
-  const ad       = getCatVal('ad');
-
-  // 請求書分のみ（損益入力タブの自動表示欄用）
-  const invTotals = {
-    fee:      getInvCatTotal('fee'),
-    labor:    getInvCatTotal('labor'),
-    rent:     getInvCatTotal('rent'),
-    facility: getInvCatTotal('facility'),
-    equip:    getInvCatTotal('equip'),
-    ad:       getInvCatTotal('ad'),
-  };
-
-  const gross = netSales - cogs - fee;
-  const grossRate = netSales > 0 ? gross / netSales : 0;
-  const opProfit = gross - rent - facility - labor - equip - ad;
-  const opRate = netSales > 0 ? opProfit / netSales : 0;
-  const hqFee = v('hqFee');
-  const netProfit = opProfit - hqFee;
-  const netRate = netSales > 0 ? netProfit / netSales : 0;
-
-  return { soSales, soSales10, soSales8, netSales, tax10, tax8, shizai, cogs, fee, gross, grossRate,
-           rent, facility, labor, equip, ad, opProfit, opRate, hqFee, netProfit, netRate, invTotals };
-}
-
-function updatePL() {
-  savePLData();
-  const store = currentStore();
-  const p = calcPL();
-  const cfg = STORE_CONFIG[store];
-  const isNoSales = cfg.salesType === 'none';
-  const setText = (id, txt) => { const el = document.getElementById(id); if (el) el.textContent = txt; };
-
-  if (!isNoSales) {
-    setText('c-soSales10', fmt(p.soSales10));
-    setText('c-soSales8',  fmt(p.soSales8));
-    setText('c-soSales',   fmt(p.soSales));
-    setText('c-netSales',  fmt(p.netSales));
-    setText('c-tax10',     fmt(p.tax10));
-    setText('c-tax8',      fmt(p.tax8));
-    setText('c-shizai',   fmt(p.shizai));
-    setText('c-cogs',     fmt(p.cogs));
-    setText('st-sales', fmt(p.soSales));
-    setText('st-cogs',  fmt(p.cogs));
-  }
-
-  // 請求書連動カテゴリの自動表示（請求書分のみ）
-  ['fee','labor','rent','facility','equip','ad'].forEach(catKey => {
-    if (getSuppliers(store, catKey).length > 0) setText(`c-inv-${catKey}`, fmt(p.invTotals[catKey]));
-  });
-  // 自動計算項目のリアルタイム表示
-  INVOICE_CATS.filter(c => c.plSection).forEach(({ key: catKey }) => {
-    getPLItemsForStore(store, catKey).forEach(item => {
-      if (item.type === 'computed' && getPLItemMode(store, item.id) === 'auto') {
-        const base = (item.sourceIds || []).reduce((s, sid) => s + v(sid), 0);
-        setText(`c-computed-${item.id}`, fmt(base * (item.feeRate || 0)));
-      }
-    });
-  });
-
-  setText('st-fee',      fmt(p.fee));
-  setText('st-labor',    fmt(p.labor));
-  setText('st-rent',     fmt(p.rent));
-  setText('st-facility', fmt(p.facility));
-  setText('st-equip',    fmt(p.equip));
-  setText('st-ad',       fmt(p.ad));
-  setText('st-hq',       fmt(p.hqFee));
-
-  if (isNoSales) {
-    // 売上なし施設：食材費 + 経費合計のみ表示
-    setText('c-shizai', fmt(p.shizai));
-    setText('st-food',  fmt(p.shizai));
-    const totalCost = p.shizai + p.fee + p.labor + p.rent + p.facility + p.equip + p.ad + p.hqFee;
-    document.getElementById('plBody').innerHTML = `
-      <div style="font-size:11px;color:#888;padding:4px 0 8px">※ 売上管理対象外施設</div>
-      <div class="pl-row"><span>食材費</span><span class="pl-val">▲${fmt(p.shizai)}</span></div>
-      <div class="pl-row"><span>変動費合計</span><span class="pl-val">▲${fmt(p.fee)}</span></div>
-      <div class="pl-row"><span>人件費</span><span class="pl-val">▲${fmt(p.labor)}</span></div>
-      <div class="pl-row"><span>家賃</span><span class="pl-val">▲${fmt(p.rent)}</span></div>
-      <div class="pl-row"><span>設備・管理費</span><span class="pl-val">▲${fmt(p.facility)}</span></div>
-      <div class="pl-row"><span>営業備品雑費</span><span class="pl-val">▲${fmt(p.equip)}</span></div>
-      <div class="pl-row"><span>広告宣伝費</span><span class="pl-val">▲${fmt(p.ad)}</span></div>
-      <div class="pl-row"><span>本部管理費</span><span class="pl-val">▲${fmt(p.hqFee)}</span></div>
-      <div class="pl-row divider red">
-        <span>経費合計</span>
-        <span class="pl-val">▲${fmt(totalCost)}</span>
-      </div>
-    `;
-  } else {
-    const gc = p.grossRate >= 0.6 ? 'green' : p.grossRate > 0 ? 'gold' : 'red';
-    const oc = p.opProfit >= 0 ? 'green' : 'red';
-    const nc = p.netProfit >= 0 ? 'green' : 'red';
-
-    document.getElementById('plBody').innerHTML = `
-      <div class="pl-row"><span>総売上</span><span class="pl-val">${fmt(p.soSales)}</span></div>
-      <div class="pl-row"><span>純売上</span><span class="pl-val">${fmt(p.netSales)}</span></div>
-      <div class="pl-row"><span>食材合計仕入額</span><span class="pl-val">▲${fmt(p.shizai)}</span></div>
-      <div class="pl-row"><span>売上原価（${p.netSales > 0 ? pct(p.cogs / p.netSales) : '—'}）</span><span class="pl-val">▲${fmt(p.cogs)}</span></div>
-      <div class="pl-row"><span>変動費合計（${p.netSales > 0 ? pct(p.fee / p.netSales) : '—'}）</span><span class="pl-val">▲${fmt(p.fee)}</span></div>
-      <div class="pl-row divider ${gc}">
-        <span>粗利（${pct(p.grossRate)}）</span>
-        <span class="pl-val">${fmt(p.gross)}</span>
-      </div>
-      <div class="pl-row"><span>人件費（${p.netSales > 0 ? pct(p.labor / p.netSales) : '—'}）</span><span class="pl-val">▲${fmt(p.labor)}</span></div>
-      <div class="pl-row"><span>家賃（${p.netSales > 0 ? pct(p.rent / p.netSales) : '—'}）</span><span class="pl-val">▲${fmt(p.rent)}</span></div>
-      <div class="pl-row"><span>設備・管理費（${p.netSales > 0 ? pct(p.facility / p.netSales) : '—'}）</span><span class="pl-val">▲${fmt(p.facility)}</span></div>
-      <div class="pl-row"><span>営業備品雑費（${p.netSales > 0 ? pct(p.equip / p.netSales) : '—'}）</span><span class="pl-val">▲${fmt(p.equip)}</span></div>
-      <div class="pl-row"><span>広告宣伝費（${p.netSales > 0 ? pct(p.ad / p.netSales) : '—'}）</span><span class="pl-val">▲${fmt(p.ad)}</span></div>
-      <div class="pl-row divider ${oc}">
-        <span>営業利益（${pct(p.opRate)}）</span>
-        <span class="pl-val">${fmt(p.opProfit)}</span>
-      </div>
-      <div class="pl-row"><span>本部管理費（${p.netSales > 0 ? pct(p.hqFee / p.netSales) : '—'}）</span><span class="pl-val">▲${fmt(p.hqFee)}</span></div>
-      <div class="pl-row divider ${nc}">
-        <span>会社利益（${pct(p.netRate)}）</span>
-        <span class="pl-val">${fmt(p.netProfit)}</span>
-      </div>
-    `;
-  }
-}
-
-// ===== 保存・読込 =====
-function savePLData() {
-  const store = currentStore();
-  const existing = JSON.parse(localStorage.getItem(plKey()) || '{}');
-  getPLKeys(store).forEach(k => {
-    const el = document.getElementById(k);
-    if (!el) return;
-    if (el.value === '') {
-      existing[k] = null;   // 空欄 = 未入力
-    } else {
-      existing[k] = parseFloat(el.value) || 0;  // '0' → 0、数値 → 数値
-    }
-  });
-  // 自動計算項目の値も保存（Excelエクスポート用）
-  INVOICE_CATS.filter(c => c.plSection).forEach(({ key: catKey }) => {
-    getPLItemsForStore(store, catKey).forEach(item => {
-      if (item.type === 'computed' && getPLItemMode(store, item.id) === 'auto') {
-        const base = (item.sourceIds || []).reduce((s, sid) => s + v(sid), 0);
-        existing[item.id] = base * (item.feeRate || 0);
-      }
-    });
-  });
-  localStorage.setItem(plKey(), JSON.stringify(existing));
-  flashSaved();
-  scheduleSyncToCloud();
-}
-
-function prevMonthPLData(store) {
-  const month = parseInt(currentMonth());
-  const year  = parseInt(currentYear());
-  const idx   = MONTHS.indexOf(month);
-  const prevMonth = idx > 0 ? MONTHS[idx - 1] : MONTHS[MONTHS.length - 1];
-  const prevYear  = idx > 0 ? year : year - 1;
-  return JSON.parse(localStorage.getItem(`pl_${prevYear}_${store}_${prevMonth}`) || '{}');
-}
-
-function loadPLData() {
-  const store = currentStore();
-  const saved = JSON.parse(localStorage.getItem(plKey()) || '{}');
-  const prevData = prevMonthPLData(store);
-
-  // 前月から引き継ぐキー（手動入力PL項目 + 本部管理費。自動計算はリアルタイム計算なので除外）
-  const carryoverKeys = new Set(['hqFee']);
-  INVOICE_CATS.filter(c => c.plSection).forEach(({ key: catKey }) =>
-    getPLItemsMaster(catKey).forEach(item => {
-      // 自動計算モードの項目は引き継ぎ不要（売上から自動計算されるため）
-      if (item.type === 'computed' && getPLItemMode(store, item.id) === 'auto') return;
-      carryoverKeys.add(item.id);
-    })
-  );
-
-  getPLKeys(store).forEach(k => {
-    const el = document.getElementById(k);
-    if (!el) return;
-    let val = saved[k];
-    // 後方互換：旧キー（cash10 など）から自動移行
-    if ((val === undefined || val === null) && SALES_LEGACY_MAP[k]) val = saved[SALES_LEGACY_MAP[k]];
-    // 未入力（null / undefined）の固定費項目は前月値を引き継ぎ
-    // ※ val === 0 は「明示的にゼロを入力した」ので引き継がない
-    if ((val === undefined || val === null) && carryoverKeys.has(k)) {
-      const prev = prevData[k];
-      if (prev !== undefined && prev !== null) val = prev;
-    }
-    // null / undefined → 空欄、0 → '0'、数値 → 数値
-    el.value = (val !== undefined && val !== null) ? val : '';
-  });
-}
-
-// ===== 全店合計タブ =====
-function renderSummaryTab() {
-  const year   = parseInt(currentYear());
-  const month  = parseInt(currentMonth());
-  const stores = Object.keys(STORE_CONFIG);
-  const MONTH_NAMES = { 4:'4月',5:'5月',6:'6月',7:'7月',8:'8月',9:'9月',
-                        10:'10月',11:'11月',12:'12月',1:'1月',2:'2月',3:'3月' };
-
-  // 全店舗の損益を計算
-  const ps = {};
-  stores.forEach(store => {
-    const plData  = getStoredPL(store, month, year);
-    const invData = getInvData(store, month, year);
-    ps[store] = calcFromRaw(store, plData, invData);
-  });
-
-  const isNoSales   = store => STORE_CONFIG[store].salesType === 'none';
-  const salesStores = stores.filter(s => !isNoSales(s)); // 売上が発生する営業店
-  const facStores   = stores.filter(isNoSales);          // 赤川・事務所など施設
-  const hasFac      = facStores.length > 0;
-  const fmtN = n => Math.round(n).toLocaleString('ja-JP');
-  const pctN = (n, base) => base > 0 ? `<span class="summary-sub">${(n/base*100).toFixed(1)}%</span>` : '';
-  // 費用項目（▲記号を付ける）
-  const COST_LABELS = new Set(['食材費','売上原価','変動費合計','人件費','家賃',
-                               '設備・管理費','営業備品雑費','広告宣伝費','本部管理費','経費合計']);
-
-  // 行定義: label, fn(p), salesOnly(施設は—表示), divider, colorFn, subFn(比率)
-  const ROW_DEFS = [
-    { label: '総売上',       fn: p => p.soSales,   salesOnly: true  },
-    { label: '純売上',       fn: p => p.netSales,  salesOnly: true  },
-    { label: '食材費',       fn: p => p.shizai,    salesOnly: false },
-    { label: '売上原価',     fn: p => p.cogs,      salesOnly: true,
-      subFn: (p, base) => pctN(p.cogs, base) },
-    { label: '変動費合計',   fn: p => p.fee,       salesOnly: false },
-    { label: '粗利',         fn: p => p.gross,     salesOnly: true,  divider: true,
-      colorFn: p => p.grossRate >= 0.6 ? 'green' : p.grossRate > 0 ? 'gold' : 'red',
-      subFn: (p, base) => pctN(p.gross, base) },
-    { label: '人件費',       fn: p => p.labor,     salesOnly: false },
-    { label: '家賃',         fn: p => p.rent,      salesOnly: false },
-    { label: '設備・管理費', fn: p => p.facility,  salesOnly: false },
-    { label: '営業備品雑費', fn: p => p.equip,     salesOnly: false },
-    { label: '広告宣伝費',   fn: p => p.ad,        salesOnly: false },
-    { label: '営業利益',     fn: p => p.opProfit,  salesOnly: true,  divider: true,
-      colorFn: p => p.opProfit >= 0 ? 'green' : 'red',
-      subFn: (p, base) => pctN(p.opProfit, base) },
-    { label: '本部管理費',   fn: p => p.hqFee,     salesOnly: false },
-    { label: '会社利益',     fn: p => p.netProfit, salesOnly: true,  divider: true,
-      colorFn: p => p.netProfit >= 0 ? 'green' : 'red',
-      subFn: (p, base) => pctN(p.netProfit, base) },
-    { label: '経費合計',     fn: p => p.cogs + p.fee + p.labor + p.rent + p.facility + p.equip + p.ad + p.hqFee,
-      salesOnly: false, divider: true },
-  ];
-
-  // 営業店合計（売上発生店舗のみ・施設は含めない＝二重計上を防ぐ）
-  const totP = {};
-  ROW_DEFS.forEach(({ label, fn }) => { totP[label] = salesStores.reduce((s, st) => s + fn(ps[st]), 0); });
-  const totNet = salesStores.reduce((s, st) => s + ps[st].netSales, 0);
-  // 施設合計（赤川・事務所などの経費のみ）
-  const facP = {};
-  ROW_DEFS.forEach(({ label, fn }) => { facP[label] = facStores.reduce((s, st) => s + fn(ps[st]), 0); });
-
-  // ヘッダー行
-  const thStore = stores.map(store => {
-    const cls = isNoSales(store) ? ' class="none-store"' : '';
-    const label = store === '赤川' ? '赤川(工場)' : store;
-    return `<th${cls}>${label}</th>`;
-  }).join('');
-  const facTh = hasFac ? `<th class="fac-col">施設合計</th>` : '';
-
-  // データ行
-  const dataRows = ROW_DEFS.map(({ label, fn, salesOnly, divider, colorFn, subFn }) => {
-    const rowCls = divider ? ' class="divider-row"' : '';
-    const dCls   = divider ? ' divider-row' : '';
-    const sign   = COST_LABELS.has(label) ? '▲' : '';
-
-    // 各店セル
-    const storeCells = stores.map(store => {
-      if (salesOnly && isNoSales(store)) return `<td class="dash">—</td>`;
-      const val = fn(ps[store]);
-      const col = colorFn ? colorFn(ps[store]) : '';
-      const sub = subFn ? ' ' + subFn(ps[store], ps[store].netSales) : '';
-      return `<td class="${col}">${sign}${fmtN(val)}${sub}</td>`;
-    }).join('');
-
-    // 営業店合計列
-    const totVal = totP[label];
-    const totPseudo = { gross: totP['粗利'], grossRate: totNet > 0 ? totP['粗利']/totNet : 0,
-                        opProfit: totP['営業利益'], netProfit: totP['会社利益'] };
-    const totCol  = colorFn ? colorFn(totPseudo) : '';
-    const totSub  = subFn ? ' ' + pctN(totVal, totNet) : '';
-    const totCell = `<td class="total-col${dCls} ${totCol}">${sign}${fmtN(totVal)}${totSub}</td>`;
-
-    // 施設合計列（経費系のみ数字・売上/利益系は—）
-    let facCell = '';
-    if (hasFac) {
-      facCell = salesOnly
-        ? `<td class="fac-col dash${dCls}">—</td>`
-        : `<td class="fac-col${dCls}">${sign}${fmtN(facP[label])}</td>`;
-    }
-
-    return `<tr${rowCls}><td class="label-cell">${label}</td>${storeCells}${totCell}${facCell}</tr>`;
-  }).join('');
-
-  document.getElementById('mainPanel').innerHTML = `
-    <div class="summary-wrap">
-      <div class="summary-title">
-        全店合計
-        <span>${year}年度 ${MONTH_NAMES[month]}</span>
-      </div>
-      <table class="summary-table">
-        <thead>
-          <tr>
-            <th>項目</th>
-            ${thStore}
-            <th class="total-col">営業店合計</th>
-            ${facTh}
-          </tr>
-        </thead>
-        <tbody>${dataRows}</tbody>
-      </table>
-      ${hasFac ? `<div class="summary-note">
-        ※「営業店合計」は売上が発生する店舗のみを合算しています（赤川・事務所は含みません）。<br>
-        ※「施設合計」は赤川（工場）・事務所の経費のみの合計です。これらの経費は各店舗へ振り分けて計上されている場合があるため、二重計上を防ぐ目的で営業店合計とは分けて集計しています。
-      </div>` : ''}
-    </div>`;
-}
 
 function flashSaved() {
   const badge = document.getElementById('savedBadge');
@@ -3269,218 +2402,6 @@ function reload() {
   }
 }
 
-function toggle(header) {
-  const body = header.nextElementSibling;
-  if (body && body.classList.contains('card-body'))
-    body.style.display = body.style.display === 'none' ? '' : 'none';
-}
-
-function clearMonth() {
-  if (!confirm('この月の損益データをすべてクリアしますか？')) return;
-  localStorage.removeItem(plKey());
-  loadPLData();
-  updatePL();
-}
-
-function clearInvoiceMonth() {
-  if (!confirm('この月の請求書データ（全カテゴリ）をクリアしますか？')) return;
-  const store = currentStore(), month = currentMonth(), year = currentYear();
-  localStorage.removeItem(flatInvKey(store, month, year)); // 新フラットキー
-  INVOICE_CATS.forEach(c => localStorage.removeItem(`inv_${year}_${store}_${month}_${c.key}`)); // 旧キー
-  localStorage.removeItem(`inv_${year}_${store}_${month}`); // 旧食材費キー
-  renderInvCatContent();
-}
-
-// ===== Excel出力 =====
-function getStoredPL(store, month, year) {
-  return JSON.parse(localStorage.getItem(`pl_${year}_${store}_${month}`) || '{}');
-}
-
-function calcFromRaw(store, plData, invData) {
-  // invData: フラット形式（全取引先IDをキーとした金額オブジェクト）
-  const cfg = STORE_CONFIG[store];
-  // 後方互換付きgetter（旧キー cash10 等も参照）
-  const g = k => {
-    if (plData[k] !== undefined) return plData[k] || 0;
-    if (SALES_LEGACY_MAP[k]) return plData[SALES_LEGACY_MAP[k]] || 0;
-    return 0;
-  };
-
-  let soSales = 0, soSales10 = 0, soSales8 = 0, netSales = 0, tax10 = 0, tax8 = 0;
-  getSalesMethodsForStore(store).forEach(({ id, tax }) => {
-    const amt = g(id);
-    soSales += amt;
-    if (tax === 0.10)      { soSales10 += amt; netSales += amt/1.1;  tax10 += amt - amt/1.1; }
-    else if (tax === 0.08) { soSales8  += amt; netSales += amt/1.08; tax8  += amt - amt/1.08; }
-    else                   { netSales  += amt; }
-  });
-
-  // 支払い方法金額をExcel用にreturnに含める
-  const salesAmts = {};
-  getSalesMethodsForStore(store).forEach(({ id }) => { salesAmts[id] = g(id); });
-
-  const shizai = calcCatTotal(invData, getSuppliers(store, 'food'));
-  const cogs = shizai + g('prevInv') - g('currInv');
-
-  function getCatValRaw(catKey) {
-    const invTotal = calcCatTotal(invData, getSuppliers(store, catKey));
-    const manualTotal = getPLItemsForStore(store, catKey).reduce((s, item) => {
-      if (item.type === 'computed') {
-        if (getPLItemMode(store, item.id) === 'auto') {
-          const base = (item.sourceIds || []).reduce((ss, sid) => ss + g(sid), 0);
-          return s + base * (item.feeRate || 0);
-        } else {
-          const amt = g(item.id);
-          return s + (item.inputType === 'excl' ? amt : amt / (1 + (item.tax || 0)));
-        }
-      }
-      const amt = g(item.id);
-      return s + (item.inputType === 'excl' ? amt : amt / (1 + (item.tax || 0)));
-    }, 0);
-    return invTotal + manualTotal;
-  }
-
-  const fee      = getCatValRaw('fee');
-  const labor    = getCatValRaw('labor');
-  const rent     = getCatValRaw('rent');
-  const facility = getCatValRaw('facility');
-  const equip    = getCatValRaw('equip');
-  const ad       = getCatValRaw('ad');
-
-  const gross = netSales - cogs - fee;
-  const grossRate = netSales > 0 ? gross/netSales : 0;
-  const opProfit = gross - rent - facility - labor - equip - ad;
-  const opRate = netSales > 0 ? opProfit/netSales : 0;
-  const hqFee = g('hqFee');
-  const netProfit = opProfit - hqFee;
-  const netRate = netSales > 0 ? netProfit/netSales : 0;
-
-  return { soSales, soSales10, soSales8, netSales, tax10, tax8, shizai, cogs, fee, gross, grossRate,
-           rent, facility, labor, equip, ad, opProfit, opRate, hqFee, netProfit, netRate,
-           ...salesAmts, ...plData };
-}
-
-function exportExcel() {
-  const year = currentYear();
-  const wb = XLSX.utils.book_new();
-  const stores = Object.keys(STORE_CONFIG);
-
-  stores.forEach(store => {
-    const cfg = STORE_CONFIG[store];
-
-    // 月別データ収集（フラット形式）
-    const ps = {};
-    const invByMonth = {}; // invByMonth[月] = フラットinvData
-    MONTHS.forEach(m => {
-      invByMonth[m] = getInvData(store, m, year);
-      ps[m] = calcFromRaw(store, getStoredPL(store, m, year), invByMonth[m]);
-    });
-
-    const mv  = fn => MONTHS.map(m => fn(ps[m]));
-    const sum = arr => arr.reduce((a,b)=>a+b, 0);
-    const avgNZ = arr => { const nz = arr.filter(x => x !== 0); return nz.length ? sum(nz)/nz.length : 0; };
-    const r = (a, b, fn) => { const vals = mv(fn); return [a, b, ...vals, sum(vals), avgNZ(vals)]; };
-
-    // --- 損益シート ---
-    const rows = [];
-    const isNoSalesStore = cfg.salesType === 'none';
-    rows.push([store, isNoSalesStore ? '経費管理施設（売上なし）' : '諸経費は税抜き', ...MONTH_JP, '合計', '平均']);
-
-    // カテゴリ行（請求書取引先＋手動入力項目を両方出力）
-    const CAT_PL_KEY = { fee:'fee', labor:'labor', rent:'rent', facility:'facility', equip:'equip', ad:'ad' };
-    const catRows = (catLabel, catKey) => {
-      const plKey = CAT_PL_KEY[catKey];
-      rows.push(r(catLabel, null, p => p[plKey]));
-      getSuppliers(store, catKey).forEach(({id, label}) => {
-        const vals = MONTHS.map(m => invByMonth[m][id] || 0);
-        rows.push([null, `[請求書]${label}`, ...vals, sum(vals), avgNZ(vals)]);
-      });
-      getPLItemsForStore(store, catKey).forEach(({id, label}) => rows.push(r(null, `[手動]${label}`, p => p[id] || 0)));
-    };
-
-    if (!isNoSalesStore) {
-      const storeSalesM = getSalesMethodsForStore(store);
-      rows.push(r('総売上', null, p => p.soSales));
-      rows.push(r(null, '売上(10%込み)合計', p => p.soSales10 || 0));
-      rows.push(r(null, '売上(8%込み)合計',  p => p.soSales8  || 0));
-      rows.push(r(null, '純売上',     p => p.netSales));
-      rows.push(r(null, '消費税10％', p => p.tax10));
-      rows.push(r(null, '消費税８％', p => p.tax8));
-      storeSalesM.sort((a,b)=>(b.tax||0)-(a.tax||0)).forEach(({ id, label, tax }) => {
-        const tl = tax === 0 ? '非課税' : `${(tax*100).toFixed(0)}%込み`;
-        rows.push(r(null, `${label}(${tl})`, p => p[id] || 0));
-      });
-
-      rows.push(r('売上原価', null, p => p.cogs));
-      rows.push(r(null, '食材合計仕入額', p => p.shizai));
-      COGS_PREV_CURR.forEach(([k,l]) => rows.push(r(null, l, p => p[k]||0)));
-
-      catRows('変動費合計', 'fee');
-
-      rows.push(r('粗利', null, p => p.gross));
-      rows.push(r(null, '粗利率', p => p.grossRate));
-
-      catRows('家賃', 'rent');
-      catRows('人件費', 'labor');
-      catRows('設備・管理費', 'facility');
-      catRows('営業備品雑費', 'equip');
-      catRows('広告宣伝費', 'ad');
-
-      rows.push([null]);
-      rows.push(r('営業利益', null, p => p.opProfit));
-      rows.push(r(null, '営業利益率', p => p.opRate));
-      rows.push(r('本部管理費', null, p => p.hqFee));
-      rows.push(r('会社利益', null, p => p.netProfit));
-      rows.push(r(null, '会社利益率', p => p.netRate));
-    } else {
-      // 売上なし施設：食材費 + 経費のみ出力
-      rows.push(r('食材費', null, p => p.shizai));
-      getSuppliers(store, 'food').forEach(({ id, label }) => {
-        const vals = MONTHS.map(m => invByMonth[m][id] || 0);
-        rows.push([null, `[請求書]${label}`, ...vals, sum(vals), avgNZ(vals)]);
-      });
-      catRows('変動費合計', 'fee');
-      catRows('人件費', 'labor');
-      catRows('家賃', 'rent');
-      catRows('設備・管理費', 'facility');
-      catRows('営業備品雑費', 'equip');
-      catRows('広告宣伝費', 'ad');
-      rows.push([null]);
-      rows.push(r('本部管理費', null, p => p.hqFee));
-      rows.push(r('経費合計', null, p => p.shizai + p.fee + p.labor + p.rent + p.facility + p.equip + p.ad + p.hqFee));
-    }
-
-    const ws = XLSX.utils.aoa_to_sheet(rows);
-    ws['!cols'] = [{wch:16},{wch:20},...MONTHS.map(()=>({wch:13})),{wch:14},{wch:12}];
-    XLSX.utils.book_append_sheet(wb, ws, store);
-
-    // --- 請求書シート（全カテゴリ） ---
-    const irows = [];
-    irows.push([`${store} 請求書明細`, '税率', ...MONTH_JP, '合計']);
-    INVOICE_CATS.forEach(cat => {
-      const sups = getSuppliers(store, cat.key);
-      if (sups.length === 0) return;
-      irows.push([`【${cat.label}】`, '', ...MONTHS.map(()=>''), '']);
-      sups.forEach(({ id, label, tax }) => {
-        const vals = MONTHS.map(m => invByMonth[m][id] || 0);
-        irows.push([label, `${(tax*100).toFixed(0)}%`, ...vals, vals.reduce((a,b)=>a+b,0)]);
-      });
-      const inclVals = MONTHS.map(m => calcCatTotalIncl(invByMonth[m], sups));
-      const exclVals = MONTHS.map(m => calcCatTotal(invByMonth[m], sups));
-      irows.push(['小計（税込み）', '', ...inclVals, inclVals.reduce((a,b)=>a+b,0)]);
-      irows.push(['小計（税抜き）', '', ...exclVals, exclVals.reduce((a,b)=>a+b,0)]);
-      irows.push([null]);
-    });
-    if (irows.length > 1) {
-      const iws = XLSX.utils.aoa_to_sheet(irows);
-      iws['!cols'] = [{wch:24},{wch:8},...MONTHS.map(()=>({wch:13})),{wch:14}];
-      XLSX.utils.book_append_sheet(wb, iws, `請_${store}`);
-    }
-  });
-
-  XLSX.writeFile(wb, `損益_${year}.xlsx`);
-  toast('Excelをダウンロードしました');
-}
 
 function toast(msg) {
   const el = document.getElementById('toast');
@@ -3495,24 +2416,51 @@ const CLOUD = {
   pwd: localStorage.getItem('cloud_pwd') || '',
 };
 let _syncTimer = null;
+let _syncing    = false;   // 送信中か（同時に2本送らないため）
+let _syncAgain  = false;   // 送信中に依頼が来た → 終わってからもう一度送る
+let _firstDirtyAt = 0;     // 最初の未送信が生まれた時刻（打ち続けても必ず送るため）
+const SYNC_MAX_WAIT = 5000;   // 入力が続いても最長5秒で必ず送信する
 
+// 同期バッジ＝「いま閉じても大丈夫か」を示す表示。
+// 「入力したら数秒待つ」という運用に頼らず、画面で判断できるようにする。
+// 未送信が残っているのに気づけないことが、データ消失の体感につながるため、
+// 件数まで出し、未接続のときも隠さない。
 function updateSyncBadge(state, msg) {
   const el = document.getElementById('syncBadge');
   if (!el) return;
+  const n = (typeof _dirtyKeys !== 'undefined') ? _dirtyKeys.size : 0;
   el.className = 'sync-badge show ' + state;
-  const icons = { ok: '☁ 同期済み', ing: '↑ 同期中…', err: '⚠ 同期エラー（クリックして再試行）' };
-  el.textContent = msg || icons[state] || '';
-  if (state === 'off') el.classList.remove('show');
+  let text = msg;
+  if (!text) {
+    if (state === 'ok')       text = '✓ 同期済み（閉じてOK）';
+    else if (state === 'ing') text = n > 0 ? `↑ 送信中… 残り${n}件` : '↑ 送信中…';
+    else if (state === 'err') text = n > 0 ? `⚠ 未送信 ${n}件 — まだ閉じないで（クリックで再送信）`
+                                           : '⚠ 同期エラー（クリックして再試行）';
+    else if (state === 'off') text = '☁ クラウド未接続（この端末にのみ保存）';
+  }
+  el.textContent = text || '';
+  el.title = state === 'err'
+    ? '送信できていない入力があります。この状態で閉じると消える可能性があります。'
+    : (state === 'ok' ? 'クラウドへの送信が完了しています' : '');
 }
 
 function scheduleSyncToCloud() {
   if (!CLOUD.url) return;
-  clearTimeout(_syncTimer);
   updateSyncBadge('ing');
+  if (!_firstDirtyAt) _firstDirtyAt = Date.now();
+  // 入力のたびに待ち直すため、打ち続けるといつまでも送信されない。
+  // 最初の未送信から SYNC_MAX_WAIT 経ったら待たずに送る。
+  if (Date.now() - _firstDirtyAt >= SYNC_MAX_WAIT) {
+    clearTimeout(_syncTimer);
+    syncToCloud();
+    return;
+  }
+  clearTimeout(_syncTimer);
   _syncTimer = setTimeout(syncToCloud, 900);
 }
 
 // このツール（日次管理）が管理しないキー＝損益管理ツール専用。同期時に触らない。
+// ※ inv_lock_（請求確定ロック）は inv_ で始まるのでここで除外される。
 function _notOwnedByThisTool(k) {
   return /^(pl_|inv_|inv2_)/.test(k);
 }
@@ -3522,41 +2470,108 @@ function _notOwnedByThisTool(k) {
 // ・同期時は変更キーだけをGASへ送信 → GAS側がキー単位でマージ
 // ・これにより「古い端末が全データを丸ごと上書きする」事故が構造的に起きない
 let _suspendDirty = false;   // クラウド→ローカル反映中は変更として扱わない
-const _DIRTY_SKIP = new Set(['cloud_url', 'cloud_pwd', '_dirty_keys']);
-const _dirtyKeys = new Set(JSON.parse(localStorage.getItem('_dirty_keys') || '[]'));
+
+// 未送信キーの保存先はツールごとに分ける。
+// 以前は損益・日次の両ツールが '_dirty_keys' を共用しており、localStorage は
+// 両者で共有されるため、同じ端末で両方を開くと互いの未送信の印を上書きして
+// 消していた（＝印を消された側は次回起動時にクラウドの古い値で上書きされ消える）。
+const DIRTY_KEY   = '_dirty_keys_daily';
+const _DIRTY_SKIP = new Set(['cloud_url', 'cloud_pwd',
+                             '_dirty_keys', '_dirty_keys_pl', '_dirty_keys_daily']);
+
+function _readDirty(key) {
+  try { const a = JSON.parse(localStorage.getItem(key) || '[]'); return Array.isArray(a) ? a : []; }
+  catch (e) { return []; }
+}
+function _loadDirty() {
+  // 専用キーが既にあればそれが正。無いときだけ旧共用キーから自分の担当分を引き継ぐ。
+  // （length で判定すると、全て送信済み '[]' のときに旧キーを再度拾ってしまう）
+  if (localStorage.getItem(DIRTY_KEY) !== null) return _readDirty(DIRTY_KEY);
+  return _readDirty('_dirty_keys').filter(k => !_DIRTY_SKIP.has(k) && !_notOwnedByThisTool(k));
+}
+const _dirtyKeys = new Set(_loadDirty());
+
+// 未送信の印は「保存済みの内容と統合してから書く」。
+// 同じツールを2つのタブで開くと、それぞれ別のメモリを持つため、
+// 単純に上書きすると相手のタブの未送信の印を消してしまう
+// （印を消された側が送信前に閉じられると、その入力は次回起動時に消える）。
+function _persistDirty() {
+  const merged = new Set([..._readDirty(DIRTY_KEY), ..._dirtyKeys]);
+  localStorage.setItem(DIRTY_KEY, JSON.stringify([...merged]));
+}
+// 送信できたキーを落とす。統合ではなく確実に取り除く必要があるので専用にする。
+function _dropDirty(keys) {
+  const cur = new Set(_readDirty(DIRTY_KEY));
+  keys.forEach(k => { cur.delete(k); _dirtyKeys.delete(k); });
+  _dirtyKeys.forEach(k => cur.add(k));
+  localStorage.setItem(DIRTY_KEY, JSON.stringify([...cur]));
+}
+_persistDirty();   // 専用キーを必ず作る（以後は旧キーを見ない）
+
+// 保存できなかったことを利用者に必ず知らせる。
+// localStorage は容量超過やプライベートモードで例外を投げる。
+// 黙って失敗すると、画面には入力した数字が見えているのに保存されていない、
+// という最悪の状態になる。
+let _storageErrShown = false;
+function _onStorageWriteError(k, e) {
+  console.error('localStorage への保存に失敗:', k, e);
+  try { updateSyncBadge('err', '⚠ 保存できません'); } catch (_) {}
+  if (_storageErrShown) return;
+  _storageErrShown = true;
+  alert('⚠️ データを保存できませんでした\n\n' +
+        'ブラウザの保存容量がいっぱいか、プライベートモードで開いている可能性があります。\n\n' +
+        '画面に見えている入力は保存されていません。\n' +
+        'この状態で入力を続けないでください。管理者に連絡してください。');
+}
+
 (function patchStorageForDirtyTracking() {
   const oset = Storage.prototype.setItem.bind(localStorage);
   const orem = Storage.prototype.removeItem.bind(localStorage);
   const mark = k => {
     if (_suspendDirty || _DIRTY_SKIP.has(k) || _notOwnedByThisTool(k)) return;
     _dirtyKeys.add(k);
-    oset('_dirty_keys', JSON.stringify([..._dirtyKeys]));
+    const merged = new Set([..._readDirty(DIRTY_KEY), ..._dirtyKeys]);
+    oset(DIRTY_KEY, JSON.stringify([...merged]));
   };
-  localStorage.setItem = function (k, v) { oset(k, v); mark(k); };
+  localStorage.setItem = function (k, v) {
+    try { oset(k, v); }
+    catch (e) { _onStorageWriteError(k, e); throw e; }   // 保存できていないので処理を止める
+    mark(k);
+  };
   localStorage.removeItem = function (k) { orem(k); mark(k); };
 })();
 function _clearDirty() {
   _dirtyKeys.clear();
-  localStorage.setItem('_dirty_keys', '[]');
+  localStorage.setItem(DIRTY_KEY, '[]');
 }
 function _markAllOwnedDirty() {
   for (let i = 0; i < localStorage.length; i++) {
     const k = localStorage.key(i);
     if (!_DIRTY_SKIP.has(k) && !_notOwnedByThisTool(k)) _dirtyKeys.add(k);
   }
-  localStorage.setItem('_dirty_keys', JSON.stringify([..._dirtyKeys]));
+  _persistDirty();
 }
 
 async function syncToCloud() {
   if (!CLOUD.url || !CLOUD.pwd) return;
+  // ★同時に2本送らない。
+  //   2本が飛ぶと、GASへの到達順が逆転したときに新しい値が古い値で上書きされる。
+  //   しかも送信自体は成功扱いなので未送信の印が消え、次回起動時にローカルの
+  //   新しい入力もクラウドの古い値で上書きされて消える。
+  //   GASの応答は数百ms〜数秒かかるため、900msのデバウンスでは重なりうる。
+  if (_syncing) { _syncAgain = true; return; }
   if (_dirtyKeys.size === 0) { updateSyncBadge('ok'); return; }
+  _syncing = true;
+  _firstDirtyAt = 0;
   updateSyncBadge('ing');
   try {
-    const changes = {};
+    // 送る内容をこの時点で確定させる（sent = 実際に送った値のスナップショット）
+    const changes = {}, sent = {};
     [..._dirtyKeys].forEach(k => {
-      if (_DIRTY_SKIP.has(k) || _notOwnedByThisTool(k)) return;
+      if (_DIRTY_SKIP.has(k) || _notOwnedByThisTool(k)) { _dirtyKeys.delete(k); return; }
       const v = localStorage.getItem(k);
       changes[k] = (v === null) ? null : v;   // null = クラウド側でも削除
+      sent[k] = v;
     });
     const res = await fetch(CLOUD.url, {
       method: 'POST',
@@ -3566,11 +2581,26 @@ async function syncToCloud() {
     if (json.error === 'update_required')
       throw new Error('クラウドが新しい同期方式です。ページを再読み込みしてください');
     if (json.error) throw new Error(json.error === 'unauthorized' ? 'パスワードエラー' : json.error);
-    _clearDirty();
-    updateSyncBadge('ok');
+
+    // ★送信できたキーだけ未送信を解除する。
+    //   通信(await)の間もユーザーは入力できるため、その分は送られていない。
+    //   以前は _clearDirty() で全て解除しており、送っていない入力の未送信印まで
+    //   消えていた（＝同期は成功表示なのに、次回起動でクラウドの古い値に上書きされ消える）。
+    //   値が変わっているキーも送った内容とは別物なので未送信のまま残す。
+    const done = Object.keys(sent).filter(k => localStorage.getItem(k) === sent[k]);
+    _dropDirty(done);
+
+    // 通信中に増えた変更／値が変わって送れなかった分を続けて送る
+    if (_syncAgain || _dirtyKeys.size > 0) { _syncAgain = false; scheduleSyncToCloud(); }
+    else updateSyncBadge('ok');
   } catch (e) {
+    // 失敗時は未送信の印を残したまま止める（ここで自動再試行すると
+    // オフライン中に900ms毎の無限リトライになる）。次の入力か起動時に送られる。
+    _syncAgain = false;
     updateSyncBadge('err');
     console.error('Cloud sync error:', e);
+  } finally {
+    _syncing = false;
   }
 }
 
@@ -3591,7 +2621,13 @@ async function loadFromCloud() {
       _suspendDirty = true;
       try {
         Object.entries(json).forEach(([k, v]) => {
-          if (k !== 'cloud_url' && k !== 'cloud_pwd' && k !== '_dirty_keys') localStorage.setItem(k, v);
+          if (_DIRTY_SKIP.has(k)) return;   // 接続設定と未送信キーの記録は取り込まない
+          // ★未送信のローカル変更はクラウドの値で上書きしない（データ消失防止）
+          //   送信に失敗したまま閉じた場合、未送信の印は次回起動まで残る。
+          //   ここで無条件に上書きすると、その端末の未送信の入力が丸ごと消える。
+          //   （例：電波の悪い場所で日次入力 → 同期失敗 → 開き直して全消失）
+          if (_dirtyKeys.has(k)) return;
+          localStorage.setItem(k, v);
         });
       } finally { _suspendDirty = false; }
     }
@@ -3651,7 +2687,7 @@ async function submitSetup() {
       _suspendDirty = true;
       try {
         Object.entries(json).forEach(([k, v]) => {
-          if (k !== 'cloud_url' && k !== 'cloud_pwd' && k !== '_dirty_keys') localStorage.setItem(k, v);
+          if (!_DIRTY_SKIP.has(k)) localStorage.setItem(k, v);
         });
       } finally { _suspendDirty = false; }
     }
@@ -3680,6 +2716,27 @@ function useOffline() {
   reload();
   showStartPage();
 }
+
+// ===== 未送信のまま失わないための保険 =====
+// ① 画面を離れる直前（アプリ切替・画面ロック・タブを閉じる等）に即座に送る。
+//    スマホはバックグラウンドに回るとタイマーが凍結され、900msの待ちが
+//    いつまでも来ないことがある。visibilitychange は閉じる前に確実に発火する。
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'hidden') return;
+  if (!CLOUD.url || !CLOUD.pwd) return;
+  if (_dirtyKeys.size === 0) return;
+  clearTimeout(_syncTimer);
+  syncToCloud();          // 待たずに送る
+});
+
+// ② それでも送り切れていない状態で閉じようとしたら引き止める。
+//    「数秒待つ」という運用に頼らず、画面で気づけるようにする。
+window.addEventListener('beforeunload', (e) => {
+  if (!CLOUD.url || !CLOUD.pwd) return;   // オフライン運用時は未送信が常態なので出さない
+  if (_dirtyKeys.size === 0) return;
+  e.preventDefault();
+  e.returnValue = '';   // 文言はブラウザ既定（Chromeは独自文言を表示しない）
+});
 
 function onSyncBadgeClick() {
   const el = document.getElementById('syncBadge');
@@ -4554,6 +3611,10 @@ function bootDailyDate() {
 // ===== 初期化 =====
 (async () => {
   if (CLOUD.url && CLOUD.pwd) {
+    // 前回送信できずに残った変更を先に送ってから取り込む。
+    // 取り込みが先だと、GASでマージされる前の古い値を受け取ることになる。
+    // （送信に失敗した場合も loadFromCloud 側が未送信キーを守る）
+    if (_dirtyKeys.size > 0) await syncToCloud();
     await loadFromCloud();
   } else {
     showSetupModal();
