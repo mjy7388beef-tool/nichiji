@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>日次管理ツール</title>
   <!-- Excel出力は損益管理ツール側の担当。こちらでは XLSX を使わないため読み込まない。 -->
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -506,17 +505,29 @@
     .modal-link:hover { color: #666; }
 
     /* ===== 日次：カレンダー ===== */
-    .calendar {
-      background: #fff; border-radius: 8px; padding: 10px 12px 12px;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.08); margin-bottom: 10px;
+    /* カレンダーの置き場所：PCは右側パネル、スマホ（1列）は従来どおり上。
+       PCでメイン列の幅932pxを丸々使うとマスが横に間延びし、縦も無駄に高くなって
+       取引先が1〜5社しか見えなくなるため。 */
+    .cal-slot-main { display: none; }
+    .cal-slot-side { display: block; }
+    @media (max-width: 760px) {
+      .cal-slot-main { display: block; }
+      .cal-slot-side { display: none; }
     }
-    .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
-    .cal-head { margin-bottom: 4px; }
-    .cal-wd { text-align: center; font-size: 11px; color: #888; padding: 2px 0; font-weight: 700; }
+
+    /* カレンダーは「入力済みの日が分かる」ことが価値。日の移動は下部の固定バーで
+       できるので、場所を取りすぎないよう詰める。ただしスマホで押せる大きさは保つ。 */
+    .calendar {
+      background: #fff; border-radius: 8px; padding: 7px 10px 8px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08); margin-bottom: 8px;
+    }
+    .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+    .cal-head { margin-bottom: 2px; }
+    .cal-wd { text-align: center; font-size: 10px; color: #888; padding: 0; font-weight: 700; }
     .cal-wd.sun { color: #d9534f; } .cal-wd.sat { color: #337ab7; }
     .cal-cell {
-      position: relative; text-align: center; padding: 9px 0; font-size: 14px;
-      border-radius: 6px; cursor: pointer; background: #f7f7f4; color: #333;
+      position: relative; text-align: center; padding: 5px 0; font-size: 13px;
+      border-radius: 5px; cursor: pointer; background: #f7f7f4; color: #333;
       user-select: none; transition: background 0.1s;
     }
     .cal-cell:hover { background: #efe7d6; }
@@ -526,10 +537,11 @@
     .cal-dot { position: absolute; bottom: 3px; left: 50%; transform: translateX(-50%);
       width: 5px; height: 5px; border-radius: 50%; background: #2e7d32; }
     .cal-cell.sel .cal-dot { background: #1a1a1a; }
-    .cal-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+    .cal-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px; }
     .cal-nav button { background: #2d2d2d; color: #fff; border: none; border-radius: 5px;
-      width: 32px; height: 30px; font-size: 16px; cursor: pointer; }
-    .cal-nav .cal-title { font-weight: 700; font-size: 14px; }
+      width: 30px; height: 26px; font-size: 15px; cursor: pointer; }
+    .cal-nav .cal-title { font-weight: 700; font-size: 13px; }
+    .cal-nav .cal-sub { font-size: 11px; color: #999; font-weight: 400; margin-left: 6px; }
 
     .day-title {
       font-size: 16px; font-weight: 700; color: #1a1a1a; margin: 4px 2px 10px;
@@ -561,15 +573,17 @@
       display: flex; justify-content: space-between; align-items: center; }
     .d-card-head .sub { color: #e8b86d; font-size: 12px; font-weight: 400; }
     .d-card-body { padding: 6px 12px 10px; }
-    .d-row { display: grid; grid-template-columns: 1fr 130px; gap: 6px 10px;
-      align-items: center; padding: 7px 0; border-bottom: 1px solid #f0f0ee; }
+    .d-row { display: grid; grid-template-columns: 1fr 130px; gap: 10px;
+      align-items: center; padding: 4px 0; border-bottom: 1px solid #f0f0ee; }
     .d-row:last-child { border-bottom: none; }
-    .d-label { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    /* 取引先名と月累計を縦に重ねて1行に収める（一覧性を上げるため） */
+    .d-label { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+    .d-name-line { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
     .d-name { font-size: 13px; }
     .d-input { width: 100%; padding: 8px 10px; border: 1px solid #ddd; border-radius: 6px;
       font-size: 15px; text-align: right; font-family: inherit; color: #1a1a1a; }
     .d-input:focus { outline: none; border-color: #e8b86d; box-shadow: 0 0 0 2px rgba(232,184,109,0.2); }
-    .d-cum { grid-column: 1 / -1; font-size: 11px; color: #999; text-align: right; margin-top: -2px; }
+    .d-cum { font-size: 11px; color: #999; line-height: 1.3; }
     .d-empty { color: #aaa; font-size: 12px; padding: 10px; text-align: center; }
 
     /* ===== 日次：当日サマリー（サイド） ===== */
@@ -615,34 +629,7 @@
     .msum-sub-val small { font-size: 11px; font-weight: 400; color: #888; margin-left: 5px; }
     .subcat-sel { font-size: 11px; background: #fff7ec !important; border-color: #e8b86d !important; }
 
-    /* ===== 伝票OCR ===== */
-    .ocr-bar { margin-bottom: 10px; }
-    .ocr-btn {
-      width: 100%; padding: 12px; border: 2px dashed #1f3a5f; background: #eef3f9;
-      color: #1f3a5f; border-radius: 8px; font-size: 14px; font-weight: 700;
-      font-family: inherit; cursor: pointer; display: flex; align-items: center;
-      justify-content: center; gap: 8px;
-    }
-    .ocr-btn:hover { background: #e0eaf5; }
-    .ocr-btn:disabled { opacity: 0.5; cursor: default; }
-    .ocr-hint { font-size: 11px; color: #999; text-align: center; margin-top: 5px; }
-
-    .ocr-prog-overlay {
-      display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6);
-      z-index: 250; align-items: center; justify-content: center;
-    }
-    .ocr-prog-overlay.show { display: flex; }
-    .ocr-prog-box {
-      background: #fff; border-radius: 12px; padding: 24px 28px; width: 280px; text-align: center;
-    }
-    .ocr-prog-box .spin {
-      width: 40px; height: 40px; border: 4px solid #eee; border-top-color: #1f3a5f;
-      border-radius: 50%; animation: spin 0.9s linear infinite; margin: 0 auto 14px;
-    }
     @keyframes spin { to { transform: rotate(360deg); } }
-    .ocr-prog-bar { height: 8px; background: #eee; border-radius: 4px; overflow: hidden; margin-top: 12px; }
-    .ocr-prog-fill { height: 100%; width: 0%; background: #1f3a5f; transition: width 0.2s; }
-    .ocr-prog-text { font-size: 13px; color: #444; margin-top: 4px; }
 
     /* 店舗バナー（誤入力防止の常時表示） */
     .store-banner {
@@ -709,33 +696,6 @@
     .pin-btns .btn-confirm:hover { background: #d4a055; }
     .pin-btns .btn-cancel  { background: #f0f0ee; color: #555; }
     .pin-btns .btn-cancel:hover  { background: #e0e0de; }
-    .ocr-modal-overlay {
-      display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6);
-      z-index: 260; align-items: center; justify-content: center; padding: 16px;
-    }
-    .ocr-modal-overlay.show { display: flex; }
-    .ocr-modal {
-      background: #fff; border-radius: 12px; width: 100%; max-width: 460px;
-      max-height: 90vh; overflow-y: auto; padding: 20px;
-    }
-    .ocr-modal h2 { font-size: 16px; margin-bottom: 4px; color: #1a1a1a; }
-    .ocr-modal .sub { font-size: 12px; color: #888; margin-bottom: 16px; }
-    .ocr-modal img.thumb { max-width: 100%; max-height: 180px; border-radius: 8px;
-      display: block; margin: 0 auto 14px; border: 1px solid #eee; }
-    .ocr-field { margin-bottom: 14px; }
-    .ocr-field label { display: block; font-size: 12px; font-weight: 700; color: #555; margin-bottom: 5px; }
-    .ocr-field select, .ocr-field input {
-      width: 100%; padding: 9px 10px; border: 1px solid #ccc; border-radius: 6px;
-      font-size: 15px; font-family: inherit;
-    }
-    .ocr-field input { text-align: right; }
-    .ocr-raw { font-size: 11px; color: #999; background: #f7f7f4; border-radius: 6px;
-      padding: 8px; max-height: 90px; overflow-y: auto; white-space: pre-wrap; line-height: 1.5; }
-    .ocr-btns { display: flex; gap: 10px; margin-top: 18px; }
-    .ocr-btns button { flex: 1; padding: 12px; border: none; border-radius: 8px;
-      font-size: 14px; font-weight: 700; font-family: inherit; cursor: pointer; }
-    .ocr-apply { background: #1f3a5f; color: #fff; }
-    .ocr-cancel { background: #eee; color: #555; }
 
     /* ===== 予実管理 ===== */
     .yj-card { background:#fff; border-radius:8px; box-shadow:0 1px 4px rgba(0,0,0,0.08); margin-bottom:10px; overflow:hidden; }
@@ -785,7 +745,9 @@
       .main-tabs { padding: 0 6px; }
       .d-row { grid-template-columns: 1fr 110px; }
       .d-input { font-size: 16px; }   /* iOSズーム防止 */
-      .cal-cell { padding: 11px 0; font-size: 15px; }
+      /* スマホは幅が狭くマスの横幅が約46pxあるので、縦を詰めても押しやすさは保てる。
+         カレンダーが画面を占めすぎると取引先が見えなくなるため。 */
+      .cal-cell { padding: 6px 0; font-size: 14px; }
       .msum-table { font-size: 12px; }
       .msum-table td, .msum-table th { padding: 6px 3px; }
       .yj-wgrid { grid-template-columns: 1fr; }
@@ -896,10 +858,7 @@
   <div class="loading-text" id="loadingText">クラウドからデータを読み込み中…</div>
 </div>
 
-<!-- 伝票OCR：ファイル入力（カメラ/写真） -->
-<input type="file" id="ocrFileInput" accept="image/*" capture="environment" style="display:none">
 
-<!-- 伝票OCR：解析中オーバーレイ -->
 <div class="store-pin-overlay" id="storePinOverlay">
   <div class="store-pin-modal">
     <div class="pin-icon">🔐</div>
@@ -914,40 +873,7 @@
     </div>
   </div>
 </div>
-<div class="ocr-prog-overlay" id="ocrProgOverlay">
-  <div class="ocr-prog-box">
-    <div class="spin"></div>
-    <div style="font-weight:700;font-size:14px">伝票を読み取り中…</div>
-    <div class="ocr-prog-bar"><div class="ocr-prog-fill" id="ocrProgFill"></div></div>
-    <div class="ocr-prog-text" id="ocrProgText">準備中…</div>
-    <div style="font-size:11px;color:#aaa;margin-top:8px">画像は端末内で処理され、外部に送信されません</div>
-  </div>
-</div>
 
-<!-- 伝票OCR：確認モーダル -->
-<div class="ocr-modal-overlay" id="ocrModalOverlay">
-  <div class="ocr-modal">
-    <h2>📷 読み取り結果の確認</h2>
-    <div class="sub">自動で読み取った内容です。<b>必ず確認・修正してから</b>「入力する」を押してください。</div>
-    <img class="thumb" id="ocrThumb" alt="伝票">
-    <div class="ocr-field">
-      <label>取引先（入力先）</label>
-      <select id="ocrSupplierSel"></select>
-    </div>
-    <div class="ocr-field">
-      <label>金額</label>
-      <input type="number" id="ocrAmountInput" min="0" placeholder="金額">
-    </div>
-    <div class="ocr-field">
-      <label>読み取った文字（参考）</label>
-      <div class="ocr-raw" id="ocrRawText"></div>
-    </div>
-    <div class="ocr-btns">
-      <button class="ocr-cancel" onclick="closeOcrModal()">キャンセル</button>
-      <button class="ocr-apply" onclick="applyOcr()">この内容で入力する</button>
-    </div>
-  </div>
-</div>
 
 <script>
 
@@ -2834,10 +2760,11 @@ function renderCalendar() {
     const cls = (d === currentDay ? ' sel' : '') + (dow===0?' sun':dow===6?' sat':'');
     cells += `<div class="cal-cell${cls}" onclick="setDay(${d})">${d}${has?'<span class="cal-dot"></span>':''}</div>`;
   }
+  const entered = Object.keys(monthData).filter(d => Object.keys(monthData[d] || {}).length > 0).length;
   return `<div class="calendar">
     <div class="cal-nav">
       <button onclick="shiftMonth(-1)" title="前の月">‹</button>
-      <span class="cal-title">${year}年 ${month}月</span>
+      <span class="cal-title">${year}年 ${month}月<span class="cal-sub">入力 ${entered} / ${dim}日</span></span>
       <button onclick="shiftMonth(1)" title="次の月">›</button>
     </div>
     <div class="cal-grid cal-head">${head}</div>
@@ -2881,8 +2808,11 @@ function renderDaily() {
   const subnav = DAILY_TABS.map(t =>
     `<button class="inv-subtab${t.key===currentDailyTab?' active':''}" onclick="switchDailyTab('${t.key}')">${t.label}</button>`
   ).join('');
+  // カレンダーはPCでは右側パネルに出す（メイン列を取引先の一覧に使うため）。
+  // スマホは1列レイアウトで右側パネルが下に回ってしまうので、従来どおり上に出す。
+  // 表示の切り替えは cal-slot-main / cal-slot-side のCSSで行う。
   document.getElementById('mainPanel').innerHTML =
-    `${renderCalendar()}
+    `<div class="cal-slot-main">${renderCalendar()}</div>
      <div class="day-nav">
        <button class="day-nav-btn" onclick="changeDay(-1)">◀ 前日</button>
        <div class="day-nav-date">${m}月${currentDay}日（${dow}）<small>${y}年</small></div>
@@ -2909,16 +2839,20 @@ function dailyRowHtml(item, dayData, monthData, inputDays) {
   let cum = 0;
   Object.values(monthData).forEach(dd => { if (dd && typeof dd[item.id] === 'number') cum += dd[item.id]; });
   const avg = inputDays > 0 ? cum / inputDays : 0;
-  const cumLine = cum > 0 ? `月累計 <b>${fmt(cum)}</b>　平均 ${fmt(avg)}` : '月累計 —';
+  // 月累計は別行にすると1行67pxになり、取引先の一覧性が落ちる。
+  // 取引先名の下に小さく添えて1行に収める。
+  const cumLine = cum > 0 ? `月累計 <b>${fmt(cum)}</b>　平均 ${fmt(avg)}` : '';
   return `<div class="d-row">
     <div class="d-label">
-      <span class="d-name">${subLabel(currentStore(), item.id, item.label)}</span>
-      <span class="tax-tag">${taxLbl}</span>
-      <span class="type-tag ${itype}">${typeLbl}</span>
+      <div class="d-name-line">
+        <span class="d-name">${subLabel(currentStore(), item.id, item.label)}</span>
+        <span class="tax-tag">${taxLbl}</span>
+        <span class="type-tag ${itype}">${typeLbl}</span>
+      </div>
+      ${cumLine ? `<div class="d-cum">${cumLine}</div>` : ''}
     </div>
     <input type="number" class="d-input" value="${cur!==undefined&&cur!==null?cur:''}" placeholder="0" min="0"
            oninput="updateDailyAmount('${item.id}', this.value)">
-    <div class="d-cum">${cumLine}</div>
   </div>`;
 }
 
@@ -3033,13 +2967,6 @@ function renderDailyContent() {
   const tabLabel = DAILY_TABS.find(t => t.key === currentDailyTab).label;
 
   let html = '';
-  // 経費系タブには伝票OCRボタンを表示（売上タブは対象外）
-  if (currentDailyTab !== 'sales') {
-    html += `<div class="ocr-bar">
-      <button class="ocr-btn" onclick="startOcr()">📷 伝票を撮影／写真から自動入力</button>
-      <div class="ocr-hint">スマホはカメラが起動します。読み取り後に確認画面で修正できます。</div>
-    </div>`;
-  }
   groups.forEach((g, gi) => {
     const bodyRows = g.items.length === 0
       ? `<div class="d-empty">項目がありません。下の「表示設定」から追加してください。</div>`
@@ -3114,6 +3041,7 @@ function renderDailySide() {
   }
 
   side.innerHTML = `
+    <div class="cal-slot-side">${renderCalendar()}</div>
     <div class="day-sum">
       <div class="day-sum-head">📅 ${month}月${currentDay}日 サマリー</div>
       <div class="day-sum-body">
@@ -3452,148 +3380,12 @@ function renderYojitsuResult() {
 }
 
 // ============================================================
-// ===== 伝票OCR（Tesseract.js・端末内処理） =====
 // ============================================================
 // 現在のタブで入力対象になる項目（フラット）
 function currentTabItems(store) {
   return dailyGroups(store, currentDailyTab).flatMap(g => g.items);
 }
 
-// 全角→半角＆桁区切り（, . ・ 空白）除去して整数化
-// ※OCRはカンマをピリオドや空白に誤読しやすいため、桁区切り候補をまとめて除去
-function _toNum(s) {
-  const h = String(s).replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
-                     .replace(/[,，.．・\s]/g, '');
-  const n = parseInt(h, 10);
-  return isNaN(n) ? null : n;
-}
-// テキストから金額候補を抽出（3桁以上、または「N,NNN」形式の桁区切り数値）
-function ocrParseAmounts(text) {
-  const out = [];
-  // 1〜3桁 + (区切り + 3桁)の繰り返し（例 46,440 / 46.440 / 1 234 567）、または3桁以上の連続数字
-  const re = /([0-9０-９]{1,3}(?:[\s,，.．・][0-9０-９]{3})+|[0-9０-９]{3,})/g;
-  let m;
-  while ((m = re.exec(text))) {
-    const n = _toNum(m[1]);
-    if (n !== null && n >= 100 && n < 100000000) out.push(n);
-  }
-  return out;
-}
-// 合計金額を推定（合計/税込/請求 などの行を優先、なければ最大値）
-function ocrPickTotal(text) {
-  const kw = /(合計|税込|総計|ご請求|請求額|請求|お買上|お買い上げ|お会計|計)/;
-  let best = null;
-  text.split(/\n/).forEach(line => {
-    if (kw.test(line)) ocrParseAmounts(line).forEach(n => { if (best === null || n > best) best = n; });
-  });
-  if (best !== null) return best;
-  const all = ocrParseAmounts(text);
-  return all.length ? Math.max(...all) : null;
-}
-// 取引先名を推定（項目ラベルがテキストに含まれるか）
-function ocrMatchSupplier(text, items) {
-  const norm = s => (s || '').replace(/\s/g, '').replace(/（.*?）|\(.*?\)/g, '');
-  const t = text.replace(/\s/g, '');
-  let best = null;
-  items.forEach(it => {
-    const name = norm(it.label);
-    if (name.length >= 2 && t.includes(name)) {
-      if (!best || name.length > best.len) best = { id: it.id, len: name.length };
-    }
-  });
-  return best ? best.id : null;
-}
-
-let _ocrResult = null; // { items, suggestedId, amount, dataUrl }
-
-function startOcr() {
-  if (typeof Tesseract === 'undefined') {
-    toast('OCRライブラリの読み込み中です。少し待って再度お試しください。');
-    return;
-  }
-  const inp = document.getElementById('ocrFileInput');
-  inp.value = '';
-  inp.click();
-}
-
-function setOcrProgress(p, label) {
-  const fill = document.getElementById('ocrProgFill');
-  const txt = document.getElementById('ocrProgText');
-  if (fill) fill.style.width = Math.round(p * 100) + '%';
-  if (txt) txt.textContent = label || (Math.round(p * 100) + '%');
-}
-
-async function handleOcrFile(file) {
-  if (!file) return;
-  const store = currentStore();
-  const items = currentTabItems(store);
-  if (items.length === 0) { toast('このタブに入力対象の項目がありません。'); return; }
-
-  // サムネイル用 dataURL
-  const dataUrl = await new Promise(res => {
-    const fr = new FileReader();
-    fr.onload = () => res(fr.result);
-    fr.readAsDataURL(file);
-  });
-
-  document.getElementById('ocrProgOverlay').classList.add('show');
-  setOcrProgress(0, '文字認識の準備中…（初回は辞書のダウンロードに時間がかかります）');
-
-  try {
-    const { data } = await Tesseract.recognize(file, 'jpn', {
-      logger: m => {
-        if (m.status === 'recognizing text') setOcrProgress(m.progress, '読み取り中… ' + Math.round(m.progress * 100) + '%');
-        else if (m.status) setOcrProgress(0.05, m.status);
-      }
-    });
-    const text = (data && data.text) || '';
-    const amount = ocrPickTotal(text);
-    const suggestedId = ocrMatchSupplier(text, items);
-    _ocrResult = { items, suggestedId, amount, dataUrl, text };
-    document.getElementById('ocrProgOverlay').classList.remove('show');
-    showOcrModal();
-  } catch (e) {
-    document.getElementById('ocrProgOverlay').classList.remove('show');
-    console.error('OCR error:', e);
-    toast('読み取りに失敗しました。明るい場所で撮り直すか、手入力してください。');
-  }
-}
-
-function showOcrModal() {
-  const r = _ocrResult;
-  if (!r) return;
-  document.getElementById('ocrThumb').src = r.dataUrl;
-  const sel = document.getElementById('ocrSupplierSel');
-  sel.innerHTML = r.items.map(it =>
-    `<option value="${it.id}"${it.id === r.suggestedId ? ' selected' : ''}>${it.label || '（名称未設定）'}</option>`
-  ).join('');
-  document.getElementById('ocrAmountInput').value = (r.amount !== null && r.amount !== undefined) ? r.amount : '';
-  const raw = document.getElementById('ocrRawText');
-  raw.textContent = (r.text || '').trim().slice(0, 400) || '（文字を検出できませんでした）';
-  document.getElementById('ocrModalOverlay').classList.add('show');
-}
-
-function closeOcrModal() {
-  document.getElementById('ocrModalOverlay').classList.remove('show');
-  _ocrResult = null;
-}
-
-function applyOcr() {
-  const id = document.getElementById('ocrSupplierSel').value;
-  const amtStr = document.getElementById('ocrAmountInput').value;
-  if (!id) { toast('取引先を選んでください。'); return; }
-  if (amtStr === '') { toast('金額を入力してください。'); return; }
-  // 当日データへ反映
-  const store = currentStore(), month = currentMonth(), year = currentYear(), day = currentDay;
-  const dayData = getDailyDay(store, month, year, day);
-  dayData[id] = parseFloat(amtStr) || 0;
-  saveDailyDay(store, month, year, day, dayData);
-  closeOcrModal();
-  renderDailyContent();   // 入力欄に反映
-  renderDailySide();
-  flashSaved();
-  toast('伝票の内容を入力しました。金額をご確認ください。');
-}
 
 // ===== 起動時：今日の日付を初期選択（1回のみ） =====
 let _dailyBooted = false;
@@ -3623,15 +3415,6 @@ function bootDailyDate() {
   initMasters();
   reload();
   showStartPage();
-})();
-
-// 伝票OCR：ファイル選択時にOCRを実行
-(function bindOcrInput() {
-  const inp = document.getElementById('ocrFileInput');
-  if (inp) inp.addEventListener('change', e => {
-    const f = e.target.files && e.target.files[0];
-    if (f) handleOcrFile(f);
-  });
 })();
 
 // ===== 数値入力欄に inputmode="decimal" を付与（モバイルで数字キーパッドを表示） =====
