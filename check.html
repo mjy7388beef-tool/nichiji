@@ -46,7 +46,8 @@
 // 端末に残っているデータを表示するだけのページ（読み取り専用）
 // 同期処理は一切読み込まないので、開いても中身が変わりません。
 // ================================================================
-// このページは同期処理を一切読み込まないため、開いても中身は変わらない
+// このページは同期処理を一切読み込まないため、開いても中身は変わらない。
+// 保存領域が空か、日次だけ無いかを見分けられるようにしてある（原因の切り分け用）。
 
 function esc(s){ return String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
 
@@ -64,6 +65,41 @@ function 日次の中身(key) {
 }
 
 const out = [];
+
+// ---- ⓪ この保存領域そのものの状態 ----
+// 「日次が無い」だけなのか「そもそも何も無い（＝別の保存領域を見ている）」のかを区別する。
+// iOS はホーム画面に追加したアプリと Safari で保存領域が分かれることがある。
+{
+  const 全キー = Object.keys(localStorage);
+  const 種類 = {
+    'マスタ（取引先・項目）': 全キー.filter(k => k.indexOf('master_') === 0).length,
+    '店舗ごとの表示設定':     全キー.filter(k => k.indexOf('active_') === 0).length,
+    '日次データ':             全キー.filter(k => k.indexOf('daily_') === 0).length,
+    '損益データ':             全キー.filter(k => /^pl_\d{4}_/.test(k)).length,
+    '請求書データ':           全キー.filter(k => k.indexOf('inv2_') === 0).length,
+  };
+  let h0 = '<div class="card"><h2>📦 この保存領域の状態</h2>';
+  h0 += '<table><tr><th>種類</th><th class="n">件数</th></tr>';
+  Object.entries(種類).forEach(([k, v]) => {
+    h0 += `<tr><td>${k}</td><td class="n ${v ? 'has' : 'none'}">${v}</td></tr>`;
+  });
+  h0 += `<tr><td><b>合計</b></td><td class="n"><b>${全キー.length}</b></td></tr></table>`;
+  h0 += '<p class="muted" style="margin-top:8px">クラウド接続: ' +
+        (localStorage.getItem('cloud_url') ? '設定ずみ' : '<b>未設定</b>') + '</p>';
+
+  if (全キー.length === 0) {
+    h0 += '<div class="warn"><b>この保存領域は完全に空です。</b><br>' +
+          'このツールをここで使ったことがない、ということです。<br><br>' +
+          '<b>ホーム画面のアイコンから開いていませんか？</b><br>' +
+          'iPhone・iPad では、ホーム画面に追加したアプリと Safari で保存場所が' +
+          '分かれることがあります。その場合、データはアプリ側に残っています。</div>';
+  } else if (種類['日次データ'] === 0) {
+    h0 += '<div class="warn">マスタなどは入っているのに<b>日次データだけがありません。</b><br>' +
+          '同期で上書きされたか、削除された可能性があります。</div>';
+  }
+  h0 += '</div>';
+  out.push(h0);
+}
 
 // ---- ① 日次データ（店舗ごと・月ごと）----
 const 日次キー = Object.keys(localStorage).filter(k => /^daily_\d{4}_.+_\d+$/.test(k)).sort();
