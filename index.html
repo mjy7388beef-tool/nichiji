@@ -682,6 +682,13 @@
     .store-pin-modal .pin-icon { font-size: 36px; margin-bottom: 8px; }
     .store-pin-modal h2 { font-size: 17px; font-weight: 700; margin-bottom: 4px; color: #1a1a1a; }
     .store-pin-modal .pin-sub { font-size: 13px; color: #888; margin-bottom: 20px; }
+    /* PIN・パスワード欄を伏せ字にする。
+       input type="password" にすると Chrome が「ログインフォーム」と誤認して
+       「パスワードを保存しますか？」を毎回出してくるため、type は text のままにして
+       見た目だけ伏せ字にする。PIN もクラウドのパスワードもツール内に保存済みで、
+       ブラウザに覚えさせる必要がない。 */
+    .masked-input { -webkit-text-security: disc; }
+
     .store-pin-modal input[type="password"], .store-pin-modal input[type="text"] {
       width: 100%; padding: 12px 14px; font-size: 20px; letter-spacing: 6px;
       border: 2px solid #ddd; border-radius: 8px; text-align: center;
@@ -843,8 +850,8 @@
     </div>
     <div class="modal-field">
       <label>パスワード</label>
-      <input type="password" id="setupPwd" placeholder="管理者から共有されたパスワード"
-             onkeydown="if(event.key==='Enter')submitSetup()">
+      <input type="text" class="masked-input" id="setupPwd" placeholder="管理者から共有されたパスワード"
+             autocomplete="off" onkeydown="if(event.key==='Enter')submitSetup()">
     </div>
     <div class="modal-err" id="setupErr"></div>
     <button class="modal-btn" onclick="submitSetup()">接続してデータを読み込む</button>
@@ -864,8 +871,8 @@
     <div class="pin-icon">🔐</div>
     <h2 id="pinStoreName">店舗名</h2>
     <div class="pin-sub">このページにアクセスするにはPINが必要です</div>
-    <input type="password" id="pinInput" placeholder="PIN" maxlength="8"
-           inputmode="numeric" onkeydown="if(event.key==='Enter')confirmStorePin()">
+    <input type="text" class="masked-input" id="pinInput" placeholder="PIN" maxlength="8"
+           inputmode="numeric" autocomplete="off" onkeydown="if(event.key==='Enter')confirmStorePin()">
     <div class="pin-error" id="pinError"></div>
     <div class="pin-btns">
       <button class="btn-cancel" onclick="cancelStorePin()">キャンセル</button>
