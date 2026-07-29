@@ -891,7 +891,7 @@
 <script>
 // このファイルの版。端末が古い版のまま動いていないかを判別するために使う。
 // 中身を更新したら必ずこの日付も変えること。
-const APP_VERSION = '2026-07-29b';
+const APP_VERSION = '2026-07-30a';
 
 
 const INVOICE_CATS = [
@@ -2495,7 +2495,13 @@ function _markAllOwnedDirty() {
   _persistDirty();
 }
 
-async function syncToCloud() {
+// 通常の送信では keepalive を付けない（同期エラーの原因になるため）。
+// 離脱時 = true のときだけ keepalive を使う。
+// keepalive は「ページが終了しても送信を完了させる」ための指定だが、
+// GAS はPOSTにリダイレクトで応答するため、keepalive を付けると
+// 応答を受け取れず同期エラーになることがある。
+// 通常の送信では付けず、画面を離れる直前（届かないと消える場面）だけ使う。
+async function syncToCloud(離脱時) {
   if (!CLOUD.url || !CLOUD.pwd) return;
   // ★同時に2本送らない。
   //   2本が飛ぶと、GASへの到達順が逆転したときに新しい値が古い値で上書きされる。
@@ -2516,22 +2522,24 @@ async function syncToCloud() {
       changes[k] = (v === null) ? null : v;   // null = クラウド側でも削除
       sent[k] = v;
     });
-    // ★keepalive: スマホでアプリを切り替えたり画面をロックすると、iOS/Android は
-    //   ページを凍結・終了させる。通常の fetch は【送信中でもキャンセル】されるため、
-    //   入力が届かないまま消える。keepalive を付けるとページが終了しても
-    //   ブラウザが送信を完了させる。ただし上限 64KB なので、超える場合は通常送信。
     const body = JSON.stringify({ pwd: CLOUD.pwd, v: 2, changes });
-    const 小さい = body.length < 60000;
-    _記録('送信開始', Object.keys(changes).join(',') + ' (' + body.length + 'B)');
-    let res;
-    try {
-      res = await fetch(CLOUD.url, { method: 'POST', body, ...(小さい ? { keepalive: true } : {}) });
-    } catch (e1) {
-      // keepalive は端末やブラウザにより使えないことがある。付けずにもう一度試す。
-      _記録('keepalive失敗', String(e1).slice(0, 80) + ' → 付けずに再試行');
-      res = await fetch(CLOUD.url, { method: 'POST', body });
+    // keepalive は上限 64KB。離脱時かつ小さいときだけ付ける。
+    const keep = !!離脱時 && body.length < 60000;
+    _記録('送信開始', Object.keys(changes).join(',') +
+                    ' (' + body.length + 'B' + (keep ? ' keepalive' : '') + ')');
+    // 送信して応答を読む。keepalive付きが失敗したら、付けずにもう一度試す。
+    async function 送る(kp) {
+      const res = await fetch(CLOUD.url, { method: 'POST', body, ...(kp ? { keepalive: true } : {}) });
+      return await res.json();     // 応答が読めない場合もここで例外になる
     }
-    const json = await res.json();
+    let json;
+    try {
+      json = await 送る(keep);
+    } catch (e1) {
+      if (!keep) throw e1;         // keepalive を使っていないなら素直に失敗として扱う
+      _記録('keepalive不可', String(e1).slice(0, 80) + ' → 付けずに再送');
+      json = await 送る(false);
+    }
     if (json.error === 'update_required')
       throw new Error('クラウドが新しい同期方式です。ページを再読み込みしてください');
     if (json.error) throw new Error(json.error === 'unauthorized' ? 'パスワードエラー' : json.error);
@@ -2784,7 +2792,7 @@ function _flushOnHide() {
   if (_dirtyKeys.size === 0) return;
   clearTimeout(_syncTimer);
   _syncing = false;       // 前回が凍結で止まっていても送り直せるようにする
-  syncToCloud();          // 待たずに送る（keepalive付きなので終了後も届く）
+  syncToCloud(true);      // 離脱時なので keepalive を付けて送る（終了後も届く）
 }
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') _flushOnHide();
