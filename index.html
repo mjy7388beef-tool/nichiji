@@ -438,6 +438,11 @@
     .store-check-row { display: flex; align-items: center; gap: 6px; padding: 2px 0; font-size: 12px; }
 
     /* ===== クラウド同期 ===== */
+    .app-ver {
+      font-size: 10px; font-weight: 400; color: #777;
+      margin-left: 8px; vertical-align: middle; letter-spacing: 0;
+    }
+    .app-ver.old { color: #fff; background: #c62828; padding: 1px 6px; border-radius: 8px; cursor: pointer; }
     .sync-badge {
       font-size: 11px; padding: 3px 10px; border-radius: 10px;
       display: none; align-items: center; gap: 4px; white-space: nowrap;
@@ -767,7 +772,7 @@
 <body>
 
 <header>
-  <h1>日次管理ツール</h1>
+  <h1>日次管理ツール<span class="app-ver" id="appVer" title="このページの版"></span></h1>
   <div class="selectors">
     <label>年度</label>
     <select id="selYear" onchange="reload()">
@@ -883,6 +888,10 @@
 
 
 <script>
+// このファイルの版。端末が古い版のまま動いていないかを判別するために使う。
+// 中身を更新したら必ずこの日付も変えること。
+const APP_VERSION = '2026-07-29a';
+
 
 const INVOICE_CATS = [
   { key: 'food',  label: '食材費',   plSection: null },
@@ -2506,9 +2515,16 @@ async function syncToCloud() {
       changes[k] = (v === null) ? null : v;   // null = クラウド側でも削除
       sent[k] = v;
     });
+    // ★keepalive: スマホでアプリを切り替えたり画面をロックすると、iOS/Android は
+    //   ページを凍結・終了させる。通常の fetch は【送信中でもキャンセル】されるため、
+    //   入力が届かないまま消える。keepalive を付けるとページが終了しても
+    //   ブラウザが送信を完了させる。ただし上限 64KB なので、超える場合は通常送信。
+    const body = JSON.stringify({ pwd: CLOUD.pwd, v: 2, changes });
+    const 小さい = body.length < 60000;
     const res = await fetch(CLOUD.url, {
       method: 'POST',
-      body: JSON.stringify({ pwd: CLOUD.pwd, v: 2, changes }),
+      body,
+      ...(小さい ? { keepalive: true } : {}),
     });
     const json = await res.json();
     if (json.error === 'update_required')
@@ -2654,13 +2670,45 @@ function useOffline() {
 // ① 画面を離れる直前（アプリ切替・画面ロック・タブを閉じる等）に即座に送る。
 //    スマホはバックグラウンドに回るとタイマーが凍結され、900msの待ちが
 //    いつまでも来ないことがある。visibilitychange は閉じる前に確実に発火する。
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState !== 'hidden') return;
+// ===== 版の表示と、新しい版が出ていないかの確認 =====
+// スマホ（特に iOS）は HTML を強くキャッシュするため、更新しても
+// 古い版のまま動き続けることがある。古い版には直したはずの不具合が残っている。
+function _showVersion(古い) {
+  const el = document.getElementById('appVer');
+  if (!el) return;
+  el.textContent = 古い ? '更新あり · タップ' : 'v' + APP_VERSION;
+  el.className = 古い ? 'app-ver old' : 'app-ver';
+  el.onclick = 古い ? () => location.reload(true) : null;
+}
+async function _checkForUpdate() {
+  _showVersion(false);
+  if (location.protocol === 'file:') return;   // ローカルのファイルは確認しない
+  try {
+    // キャッシュを避けて自分自身を取り直し、中の APP_VERSION を比べる
+    const res  = await fetch(location.pathname + '?v=' + Date.now(), { cache: 'no-store' });
+    const text = await res.text();
+    const m    = text.match(/const APP_VERSION = '([^']+)'/);
+    if (m && m[1] !== APP_VERSION) {
+      _showVersion(true);
+      console.warn('新しい版があります: ' + m[1] + '（いま動いているのは ' + APP_VERSION + '）');
+    }
+  } catch (e) { /* 確認できなくても通常利用に支障はない */ }
+}
+
+// 画面を離れる直前に、未送信分を待たずに送る
+function _flushOnHide() {
   if (!CLOUD.url || !CLOUD.pwd) return;
   if (_dirtyKeys.size === 0) return;
   clearTimeout(_syncTimer);
-  syncToCloud();          // 待たずに送る
+  _syncing = false;       // 前回が凍結で止まっていても送り直せるようにする
+  syncToCloud();          // 待たずに送る（keepalive付きなので終了後も届く）
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') _flushOnHide();
 });
+// pagehide も必要。iOS Safari はタブを閉じる・別アプリへ移る際に
+// visibilitychange が発火しないことがあり、pagehide のほうが確実に来る。
+window.addEventListener('pagehide', _flushOnHide);
 
 // ② それでも送り切れていない状態で閉じようとしたら引き止める。
 //    「数秒待つ」という運用に頼らず、画面で気づけるようにする。
@@ -3409,6 +3457,7 @@ function bootDailyDate() {
 
 // ===== 初期化 =====
 (async () => {
+  _checkForUpdate();   // 古い版のまま動いていないか確認（待たない）
   if (CLOUD.url && CLOUD.pwd) {
     // 前回送信できずに残った変更を先に送ってから取り込む。
     // 取り込みが先だと、GASでマージされる前の古い値を受け取ることになる。
