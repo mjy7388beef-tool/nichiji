@@ -442,6 +442,7 @@
       font-size: 10px; font-weight: 400; color: #777;
       margin-left: 8px; vertical-align: middle; letter-spacing: 0;
     }
+    .app-ver { cursor: pointer; padding: 2px 4px; }
     .app-ver.old { color: #fff; background: #c62828; padding: 1px 6px; border-radius: 8px; cursor: pointer; }
     .sync-badge {
       font-size: 11px; padding: 3px 10px; border-radius: 10px;
@@ -890,7 +891,7 @@
 <script>
 // このファイルの版。端末が古い版のまま動いていないかを判別するために使う。
 // 中身を更新したら必ずこの日付も変えること。
-const APP_VERSION = '2026-07-29a';
+const APP_VERSION = '2026-07-29b';
 
 
 const INVOICE_CATS = [
@@ -2418,7 +2419,7 @@ let _suspendDirty = false;   // クラウド→ローカル反映中は変更と
 // 両者で共有されるため、同じ端末で両方を開くと互いの未送信の印を上書きして
 // 消していた（＝印を消された側は次回起動時にクラウドの古い値で上書きされ消える）。
 const DIRTY_KEY   = '_dirty_keys_daily';
-const _DIRTY_SKIP = new Set(['cloud_url', 'cloud_pwd',
+const _DIRTY_SKIP = new Set(['cloud_url', 'cloud_pwd', '_diag_log', '_diag_snap',
                              '_dirty_keys', '_dirty_keys_pl', '_dirty_keys_daily']);
 
 function _readDirty(key) {
@@ -2521,11 +2522,15 @@ async function syncToCloud() {
     //   ブラウザが送信を完了させる。ただし上限 64KB なので、超える場合は通常送信。
     const body = JSON.stringify({ pwd: CLOUD.pwd, v: 2, changes });
     const 小さい = body.length < 60000;
-    const res = await fetch(CLOUD.url, {
-      method: 'POST',
-      body,
-      ...(小さい ? { keepalive: true } : {}),
-    });
+    _記録('送信開始', Object.keys(changes).join(',') + ' (' + body.length + 'B)');
+    let res;
+    try {
+      res = await fetch(CLOUD.url, { method: 'POST', body, ...(小さい ? { keepalive: true } : {}) });
+    } catch (e1) {
+      // keepalive は端末やブラウザにより使えないことがある。付けずにもう一度試す。
+      _記録('keepalive失敗', String(e1).slice(0, 80) + ' → 付けずに再試行');
+      res = await fetch(CLOUD.url, { method: 'POST', body });
+    }
     const json = await res.json();
     if (json.error === 'update_required')
       throw new Error('クラウドが新しい同期方式です。ページを再読み込みしてください');
@@ -2538,6 +2543,8 @@ async function syncToCloud() {
     //   値が変わっているキーも送った内容とは別物なので未送信のまま残す。
     const done = Object.keys(sent).filter(k => localStorage.getItem(k) === sent[k]);
     _dropDirty(done);
+    _記録('送信成功', 'クラウドが受理:' + (json.applied !== undefined ? json.applied + '件' : '?') +
+                    ' / 未送信を解除:' + done.length + '件 / 残り:' + _dirtyKeys.size + '件');
 
     // 通信中に増えた変更／値が変わって送れなかった分を続けて送る
     if (_syncAgain || _dirtyKeys.size > 0) { _syncAgain = false; scheduleSyncToCloud(); }
@@ -2547,6 +2554,7 @@ async function syncToCloud() {
     // オフライン中に900ms毎の無限リトライになる）。次の入力か起動時に送られる。
     _syncAgain = false;
     updateSyncBadge('err');
+    _記録('送信失敗', String(e).slice(0, 100) + ' / 未送信:' + _dirtyKeys.size + '件');
     console.error('Cloud sync error:', e);
   } finally {
     _syncing = false;
@@ -2678,7 +2686,65 @@ function _showVersion(古い) {
   if (!el) return;
   el.textContent = 古い ? '更新あり · タップ' : 'v' + APP_VERSION;
   el.className = 古い ? 'app-ver old' : 'app-ver';
-  el.onclick = 古い ? () => location.reload(true) : null;
+  el.onclick = 古い ? () => location.reload(true) : _記録を見せる;
+}
+
+// 版の表示をタップすると、この端末で何が起きたかを表示する
+function _記録を見せる() {
+  const 記録 = _記録を読む();
+  const 日次 = Object.keys(localStorage).filter(k => /^daily_\d{4}_.+_\d+$/.test(k));
+  let 日数 = 0;
+  日次.forEach(k => {
+    try { const o = JSON.parse(localStorage.getItem(k) || '{}');
+      日数 += Object.keys(o).filter(d => o[d] && Object.keys(o[d]).length > 0).length; } catch (e) {}
+  });
+  const 行 = 記録.slice().reverse().map(r =>
+    `<div style="padding:4px 0;border-bottom:1px solid #eee">
+       <span style="color:#888;font-size:10px">${r.t}</span>
+       <b style="margin-left:6px">${r.種類}</b>
+       <div style="color:#555;font-size:11px;word-break:break-all">${String(r.内容).replace(/</g,'&lt;')}</div>
+     </div>`).join('') || '<p style="color:#999">記録がありません</p>';
+
+  const html = `
+    <div id="diagBox" style="position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;
+         display:flex;align-items:center;justify-content:center;padding:16px" onclick="_記録を閉じる(event)">
+      <div style="background:#fff;border-radius:10px;max-width:520px;width:100%;max-height:85vh;
+           overflow:auto;padding:16px" onclick="event.stopPropagation()">
+        <h2 style="font-size:16px;margin-bottom:8px">この端末の記録</h2>
+        <div style="background:#f7f7f4;border-radius:6px;padding:10px;font-size:12px;margin-bottom:12px">
+          版 <b>${APP_VERSION}</b><br>
+          日次データ <b>${日次.length}</b>キー / のべ <b>${日数}</b>日分<br>
+          未送信 <b>${_dirtyKeys.size}</b>件<br>
+          クラウド ${CLOUD.url ? '接続ずみ' : '<b>未接続</b>'}<br>
+          保存領域の合計 <b>${Object.keys(localStorage).length}</b>キー
+        </div>
+        <div style="font-size:12px">${行}</div>
+        <button onclick="_記録をコピー()" style="width:100%;padding:12px;margin-top:12px;border:none;
+                border-radius:8px;background:#1f3a5f;color:#fff;font-weight:700;font-family:inherit">
+          記録をコピーする</button>
+        <button onclick="_記録を閉じる()" style="width:100%;padding:12px;margin-top:8px;border:none;
+                border-radius:8px;background:#eee;color:#444;font-weight:700;font-family:inherit">
+          閉じる</button>
+      </div>
+    </div>`;
+  const d = document.createElement('div');
+  d.innerHTML = html;
+  document.body.appendChild(d.firstElementChild);
+}
+function _記録を閉じる(e) {
+  if (e && e.target && e.target.id !== 'diagBox') return;
+  const b = document.getElementById('diagBox');
+  if (b) b.remove();
+}
+function _記録をコピー() {
+  const t = '版:' + APP_VERSION + ' / 未送信:' + _dirtyKeys.size + '件 / 全キー:' +
+            Object.keys(localStorage).length + '\n' +
+            _記録を読む().map(r => r.t + ' [' + r.種類 + '] ' + r.内容).join('\n');
+  const ta = document.createElement('textarea');
+  ta.value = t; document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); toast('記録をコピーしました'); }
+  catch (e) { alert(t); }
+  ta.remove();
 }
 async function _checkForUpdate() {
   _showVersion(false);
@@ -2693,6 +2759,23 @@ async function _checkForUpdate() {
       console.warn('新しい版があります: ' + m[1] + '（いま動いているのは ' + APP_VERSION + '）');
     }
   } catch (e) { /* 確認できなくても通常利用に支障はない */ }
+}
+
+// ===== 動作の記録（保存されない原因を追うため） =====
+// 「保存したのに消えた」原因を追うため、直前に何が起きたかを端末に残す。
+// 次に開いたときに版の表示をタップすれば見られる。
+const LOG_KEY = '_diag_log';
+function _記録(種類, 内容) {
+  try {
+    const a = JSON.parse(localStorage.getItem(LOG_KEY) || '[]');
+    a.push({ t: new Date().toISOString().slice(5, 19).replace('T', ' '), 種類, 内容 });
+    while (a.length > 40) a.shift();          // 直近40件だけ残す
+    // 記録そのものが同期対象にならないよう、素の setItem を使う
+    Storage.prototype.setItem.call(localStorage, LOG_KEY, JSON.stringify(a));
+  } catch (e) { /* 記録できなくても本体の動作は止めない */ }
+}
+function _記録を読む() {
+  try { return JSON.parse(localStorage.getItem(LOG_KEY) || '[]'); } catch (e) { return []; }
 }
 
 // 画面を離れる直前に、未送信分を待たずに送る
@@ -3455,9 +3538,44 @@ function bootDailyDate() {
   currentDay = now.getDate();
 }
 
+// 起動時に「前回あったデータが消えていないか」を確かめる。
+// 前回終了時のキー数を控えてあるので、それより減っていれば消失が起きている。
+const SNAP_KEY = '_diag_snap';
+function _起動時の点検() {
+  const いま = {};
+  Object.keys(localStorage).forEach(k => {
+    const m = k.match(/^daily_\d{4}_(.+)_\d+$/);
+    if (!m) return;
+    try {
+      const o = JSON.parse(localStorage.getItem(k) || '{}');
+      いま[k] = Object.keys(o).filter(d => o[d] && Object.keys(o[d]).length > 0).length;
+    } catch (e) { いま[k] = 0; }
+  });
+  let 前回 = null;
+  try { 前回 = JSON.parse(localStorage.getItem(SNAP_KEY) || 'null'); } catch (e) {}
+
+  if (前回) {
+    const 減った = [];
+    Object.keys(前回).forEach(k => {
+      const a = 前回[k], b = いま[k] === undefined ? 0 : いま[k];
+      if (b < a) 減った.push(k + ' ' + a + '日→' + b + '日');
+    });
+    if (減った.length) _記録('⚠データが減った', 減った.join(' / '));
+    else _記録('起動時の点検', '減っていない（' + Object.keys(いま).length + 'キー）');
+  } else {
+    _記録('起動時の点検', '初回（記録開始）');
+  }
+  return いま;
+}
+function _点検を控える(いま) {
+  try { Storage.prototype.setItem.call(localStorage, SNAP_KEY, JSON.stringify(いま)); } catch (e) {}
+}
+
 // ===== 初期化 =====
 (async () => {
   _checkForUpdate();   // 古い版のまま動いていないか確認（待たない）
+  const 起動時 = _起動時の点検();
+  _記録('起動', '未送信' + _dirtyKeys.size + '件 / 接続' + (CLOUD.url ? 'あり' : 'なし'));
   if (CLOUD.url && CLOUD.pwd) {
     // 前回送信できずに残った変更を先に送ってから取り込む。
     // 取り込みが先だと、GASでマージされる前の古い値を受け取ることになる。
@@ -3468,6 +3586,9 @@ function bootDailyDate() {
     showSetupModal();
     return; // モーダルのsubmitSetup / useOffline 内で initMasters + reload される
   }
+  // 取り込みで減っていないかを確かめて、今回の状態を控える
+  const 取込後 = _起動時の点検();
+  _点検を控える(取込後);
   initMasters();
   reload();
   showStartPage();
