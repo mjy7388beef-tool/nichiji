@@ -891,7 +891,7 @@
 <script>
 // このファイルの版。端末が古い版のまま動いていないかを判別するために使う。
 // 中身を更新したら必ずこの日付も変えること。
-const APP_VERSION = '2026-07-30b';
+const APP_VERSION = '2026-07-30c';
 
 
 const INVOICE_CATS = [
@@ -2468,21 +2468,37 @@ function _onStorageWriteError(k, e) {
         'この状態で入力を続けないでください。管理者に連絡してください。');
 }
 
+// 変更のあったキーに「未送信の印」を付ける仕組み（これが効かないとデータが消える）。
+// ★以前は localStorage.setItem に直接代入して差し替えていたが、
+//   iPad の Safari ではこの差し替えが効かず【印が付かないまま保存され】、
+//   送信されず、次回起動時にクラウドの古い値で上書きされて消えていた。
+//   Storage の設計図（prototype）側を差し替えると確実に効く。
+let _印付け有効 = false;
+let _rawSet = (k, v) => Storage.prototype.setItem.call(localStorage, k, v);
 (function patchStorageForDirtyTracking() {
-  const oset = Storage.prototype.setItem.bind(localStorage);
-  const orem = Storage.prototype.removeItem.bind(localStorage);
+  const oset = Storage.prototype.setItem;
+  const orem = Storage.prototype.removeItem;
+  _rawSet = (k, v) => oset.call(localStorage, k, v);   // 印を付けずに書く（記録用）
   const mark = k => {
     if (_suspendDirty || _DIRTY_SKIP.has(k) || _notOwnedByThisTool(k)) return;
     _dirtyKeys.add(k);
     const merged = new Set([..._readDirty(DIRTY_KEY), ..._dirtyKeys]);
-    oset(DIRTY_KEY, JSON.stringify([...merged]));
+    oset.call(localStorage, DIRTY_KEY, JSON.stringify([...merged]));
   };
-  localStorage.setItem = function (k, v) {
-    try { oset(k, v); }
-    catch (e) { _onStorageWriteError(k, e); throw e; }   // 保存できていないので処理を止める
-    mark(k);
+  Storage.prototype.setItem = function (k, v) {
+    try { oset.call(this, k, v); }
+    catch (e) {
+      if (this === localStorage) _onStorageWriteError(k, e);
+      throw e;                                   // 保存できていないので処理を止める
+    }
+    if (this === localStorage) mark(k);           // sessionStorage は対象外
   };
-  localStorage.removeItem = function (k) { orem(k); mark(k); };
+  Storage.prototype.removeItem = function (k) {
+    orem.call(this, k);
+    if (this === localStorage) mark(k);
+  };
+  // 差し替えが本当に効いたかを確かめる（効いていなければ印が付かず、消失につながる）
+  _印付け有効 = (localStorage.setItem !== oset);
 })();
 function _clearDirty() {
   _dirtyKeys.clear();
@@ -2783,7 +2799,7 @@ function _記録(種類, 内容) {
     a.push({ t, 種類, 内容 });
     while (a.length > 40) a.shift();          // 直近40件だけ残す
     // 記録そのものが同期対象にならないよう、素の setItem を使う
-    Storage.prototype.setItem.call(localStorage, LOG_KEY, JSON.stringify(a));
+    _rawSet(LOG_KEY, JSON.stringify(a));
   } catch (e) { /* 記録できなくても本体の動作は止めない */ }
 }
 function _記録を読む() {
@@ -3587,14 +3603,15 @@ function _起動時の点検() {
   return いま;
 }
 function _点検を控える(いま) {
-  try { Storage.prototype.setItem.call(localStorage, SNAP_KEY, JSON.stringify(いま)); } catch (e) {}
+  try { _rawSet(SNAP_KEY, JSON.stringify(いま)); } catch (e) {}
 }
 
 // ===== 初期化 =====
 (async () => {
   _checkForUpdate();   // 古い版のまま動いていないか確認（待たない）
   const 起動時 = _起動時の点検();
-  _記録('起動', '未送信' + _dirtyKeys.size + '件 / 接続' + (CLOUD.url ? 'あり' : 'なし'));
+  _記録('起動', '未送信' + _dirtyKeys.size + '件 / 接続' + (CLOUD.url ? 'あり' : 'なし') +
+               ' / 印付け' + (_印付け有効 ? '有効' : '❌無効'));
   if (CLOUD.url && CLOUD.pwd) {
     // 前回送信できずに残った変更を先に送ってから取り込む。
     // 取り込みが先だと、GASでマージされる前の古い値を受け取ることになる。
