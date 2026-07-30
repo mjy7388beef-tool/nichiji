@@ -891,7 +891,7 @@
 <script>
 // このファイルの版。端末が古い版のまま動いていないかを判別するために使う。
 // 中身を更新したら必ずこの日付も変えること。
-const APP_VERSION = '2026-07-30a';
+const APP_VERSION = '2026-07-30b';
 
 
 const INVOICE_CATS = [
@@ -2458,6 +2458,7 @@ _persistDirty();   // 専用キーを必ず作る（以後は旧キーを見な�
 let _storageErrShown = false;
 function _onStorageWriteError(k, e) {
   console.error('localStorage への保存に失敗:', k, e);
+  try { _記録('❌保存できない', k + ' / ' + String(e).slice(0, 80)); } catch (_) {}
   try { updateSyncBadge('err', '⚠ 保存できません'); } catch (_) {}
   if (_storageErrShown) return;
   _storageErrShown = true;
@@ -2776,7 +2777,10 @@ const LOG_KEY = '_diag_log';
 function _記録(種類, 内容) {
   try {
     const a = JSON.parse(localStorage.getItem(LOG_KEY) || '[]');
-    a.push({ t: new Date().toISOString().slice(5, 19).replace('T', ' '), 種類, 内容 });
+    const d = new Date();
+    const z = n => String(n).padStart(2, '0');
+    const t = `${z(d.getMonth()+1)}-${z(d.getDate())} ${z(d.getHours())}:${z(d.getMinutes())}:${z(d.getSeconds())}`;
+    a.push({ t, 種類, 内容 });
     while (a.length > 40) a.shift();          // 直近40件だけ残す
     // 記録そのものが同期対象にならないよう、素の setItem を使う
     Storage.prototype.setItem.call(localStorage, LOG_KEY, JSON.stringify(a));
@@ -2849,7 +2853,14 @@ function saveDailyDay(store, month, year, day, dayData) {
   });
   if (Object.keys(cleaned).length === 0) delete m[String(day)];
   else m[String(day)] = cleaned;
-  localStorage.setItem(dailyKey(store, month, year), JSON.stringify(m));
+  const key = dailyKey(store, month, year);
+  const 中身 = JSON.stringify(m);
+  localStorage.setItem(key, 中身);
+  // 書けたつもりで書けていない場合を捕まえるため、読み直して確かめる
+  const 読み直し = localStorage.getItem(key);
+  _記録('入力を保存', key + ' ' + day + '日 ' + Object.keys(cleaned).length + '項目 → ' +
+                    (読み直し === 中身 ? '書けた' : '❌書けていない') +
+                    ' / 未送信' + _dirtyKeys.size + '件');
   scheduleSyncToCloud();
 }
 
