@@ -250,7 +250,7 @@
 
     /* マスタ編集行（管理者タブ） */
     .sup-header {
-      display: grid; grid-template-columns: 40px 1fr 65px 62px 90px 32px;
+      display: grid; grid-template-columns: 40px 1fr 65px 62px 58px 90px 32px;
       gap: 6px; padding: 4px 0 6px;
       font-size: 11px; color: #999; border-bottom: 1px solid #eee; margin-bottom: 2px;
     }
@@ -418,12 +418,12 @@
 
     /* 売上項目マスタ行 */
     .sales-header {
-      display: grid; grid-template-columns: 40px 1fr 65px 32px;
+      display: grid; grid-template-columns: 40px 1fr 65px 58px 32px;
       gap: 6px; padding: 4px 0 6px;
       font-size: 11px; color: #999; border-bottom: 1px solid #eee; margin-bottom: 2px;
     }
     .sales-row {
-      display: grid; grid-template-columns: 40px 1fr 65px 32px;
+      display: grid; grid-template-columns: 40px 1fr 65px 58px 32px;
       gap: 6px; align-items: center;
       padding: 4px 0; border-bottom: 1px solid #f5f5f3;
     }
@@ -773,9 +773,9 @@
 <body>
 
 <header>
-  <h1>日次管理ツール<span class="app-ver" id="appVer" title="このページの版"></span></h1>
+  <h1><span id="appTitle">日次管理ツール</span><span class="app-ver" id="appVer" title="このページの版"></span></h1>
   <div class="selectors">
-    <label>年度</label>
+    <label id="yearLbl">年度</label>
     <select id="selYear" onchange="reload()">
       <option value="2025">2025</option>
       <option value="2026">2026</option>
@@ -789,12 +789,16 @@
       <option value="阿倍野">阿倍野</option>
       <option value="難波">難波</option>
       <option value="LAB">LAB</option>
+      <optgroup label="タイ（Thailand）">
+        <option value="BangkokShabu">Bangkok Shabu</option>
+        <option value="BangkokYakiniku">Bangkok Yakiniku</option>
+      </optgroup>
       <optgroup label="施設">
         <option value="赤川">赤川（工場）</option>
         <option value="事務所">事務所</option>
       </optgroup>
     </select>
-    <label>月</label>
+    <label id="monthLbl">月</label>
     <select id="selMonth" onchange="reload()">
       <option value="4">4月</option>
       <option value="5">5月</option>
@@ -819,14 +823,15 @@
   <span class="store-banner-icon">🏪</span>
   <span class="store-banner-name" id="storeBannerName">店舗</span>
   <span class="store-banner-date" id="storeBannerDate"></span>
-  <span class="store-banner-switch">切替 ⇄</span>
+  <span class="store-banner-switch" id="storeBannerSwitch">切替 ⇄</span>
 </div>
 
 <!-- スタート（店舗選択）ページ -->
 <div class="start-overlay" id="startOverlay">
   <div class="start-box">
     <div class="start-title">日次管理ツール</div>
-    <div class="start-sub">担当する店舗を選んでください</div>
+    <div class="start-sub">担当する店舗を選んでください<br>
+      <span style="opacity:.75">Select the store you are working at</span></div>
     <div class="start-grid" id="startGrid"></div>
   </div>
 </div>
@@ -848,27 +853,28 @@
 <!-- セットアップモーダル -->
 <div class="modal-overlay" id="setupModal">
   <div class="modal-box">
-    <h2>☁️ クラウド接続設定</h2>
-    <p>データを複数デバイスで共有するため、Google Apps ScriptのURLとパスワードを入力してください。<br>管理者から共有された情報を入力してください。設定後はこのデバイスに記憶されます。</p>
+    <h2>☁️ クラウド接続設定 / Cloud Setup</h2>
+    <p>データを複数デバイスで共有するため、Google Apps ScriptのURLとパスワードを入力してください。<br>管理者から共有された情報を入力してください。設定後はこのデバイスに記憶されます。<br>
+    <span style="opacity:.75">Enter the Apps Script URL and password given to you by the administrator. They are remembered on this device.</span></p>
     <div class="modal-field">
       <label>Apps Script URL</label>
       <input type="text" id="setupUrl" placeholder="https://script.google.com/macros/s/..." autocomplete="off">
     </div>
     <div class="modal-field">
-      <label>パスワード</label>
+      <label>パスワード / Password</label>
       <input type="text" class="masked-input" id="setupPwd" placeholder="管理者から共有されたパスワード"
              autocomplete="off" onkeydown="if(event.key==='Enter')submitSetup()">
     </div>
     <div class="modal-err" id="setupErr"></div>
-    <button class="modal-btn" onclick="submitSetup()">接続してデータを読み込む</button>
-    <div class="modal-link" onclick="useOffline()">オフラインで使用する（データは他デバイスと共有されません）</div>
+    <button class="modal-btn" onclick="submitSetup()">接続してデータを読み込む / Connect</button>
+    <div class="modal-link" onclick="useOffline()">オフラインで使用する（データは他デバイスと共有されません）<br>Use offline — data will not be shared with other devices</div>
   </div>
 </div>
 
 <!-- ローディングオーバーレイ -->
 <div class="loading-overlay" id="loadingOverlay">
   <div class="loading-spinner"></div>
-  <div class="loading-text" id="loadingText">クラウドからデータを読み込み中…</div>
+  <div class="loading-text" id="loadingText">クラウドからデータを読み込み中… / Loading…</div>
 </div>
 
 
@@ -876,13 +882,14 @@
   <div class="store-pin-modal">
     <div class="pin-icon">🔐</div>
     <h2 id="pinStoreName">店舗名</h2>
-    <div class="pin-sub">このページにアクセスするにはPINが必要です</div>
+    <div class="pin-sub">このページにアクセスするにはPINが必要です<br>
+      <span style="opacity:.75">A PIN is required to open this store</span></div>
     <input type="text" class="masked-input" id="pinInput" placeholder="PIN" maxlength="8"
            inputmode="numeric" autocomplete="off" onkeydown="if(event.key==='Enter')confirmStorePin()">
     <div class="pin-error" id="pinError"></div>
     <div class="pin-btns">
-      <button class="btn-cancel" onclick="cancelStorePin()">キャンセル</button>
-      <button class="btn-confirm" onclick="confirmStorePin()">確認</button>
+      <button class="btn-cancel" onclick="cancelStorePin()">キャンセル / Cancel</button>
+      <button class="btn-confirm" onclick="confirmStorePin()">確認 / OK</button>
     </div>
   </div>
 </div>
@@ -891,7 +898,7 @@
 <script>
 // このファイルの版。端末が古い版のまま動いていないかを判別するために使う。
 // 中身を更新したら必ずこの日付も変えること。
-const APP_VERSION = '2026-07-30c';
+const APP_VERSION = '2026-11-15a';
 
 
 const INVOICE_CATS = [
@@ -1248,6 +1255,28 @@ const STORE_CONFIG = {
     ],
   },
 
+  // ===== タイ・バンコク（現地スタッフが入力：英語表示・バーツ建て・VAT 7%）=====
+  // キーは localStorage とクラウドのデータ名に使う。一度決めたら変えないこと
+  // （変えると過去の入力が別店舗のものとして扱われ、見えなくなる）。
+  // 項目は THAI_SETUP で英語のものを用意し、setupThaiStores() で有効化する。
+  'BangkokShabu': {
+    displayName: 'Bangkok Shabu',
+    lang: 'en', currency: 'THB', country: 'TH',
+    salesType: 'breakdown',
+    salesExtra: [],
+    foodSuppliers: [],
+    fee: [], rent: [], labor: [], utility: [], equipment: [], ad: [],
+  },
+
+  'BangkokYakiniku': {
+    displayName: 'Bangkok Yakiniku',
+    lang: 'en', currency: 'THB', country: 'TH',
+    salesType: 'breakdown',
+    salesExtra: [],
+    foodSuppliers: [],
+    fee: [], rent: [], labor: [], utility: [], equipment: [], ad: [],
+  },
+
   '赤川': {
     salesType: 'none',
     salesExtra: [],
@@ -1287,9 +1316,304 @@ const STORE_COLORS = {
   '阿倍野':   '#2980b9',
   '難波':     '#16a085',
   'LAB':      '#f39c12',
+  'BangkokShabu':    '#6d4c41',
+  'BangkokYakiniku': '#ad1457',
   '赤川':     '#7f8c8d',
   '事務所':   '#34495e',
 };
+
+// 画面に出す店舗名（タイ店舗は英語名）
+function storeLabel(store) {
+  const c = STORE_CONFIG[store];
+  return (c && c.displayName) ? c.displayName : store;
+}
+
+// ============================================================
+// ===== 店舗ごとの言語・通貨（タイ店舗＝英語・バーツ）=====
+// ============================================================
+// 日本の店舗の表示はいっさい変えない。
+// 店舗が選ばれる前（接続設定・店舗選択・PIN）は日本語と英語を併記してあるので、
+// ここの切り替えは「店舗を選んだあとの画面」だけに効く。
+function storeLang(store)     { return (STORE_CONFIG[store] || {}).lang     || 'ja'; }
+function storeCurrency(store) { return (STORE_CONFIG[store] || {}).currency || 'JPY'; }
+function storeCountry(store)  { return (STORE_CONFIG[store] || {}).country  || 'JP'; }
+
+// 項目（取引先・損益入力項目・支払い方法）がどの国のものか。
+// 既存の項目には region が無いので、すべて 'JP'（日本）として扱う＝従来の動きのまま。
+// タイ用の項目には region:'TH' を付ける。これで
+//   ・日本の店舗にはタイの項目が出ない
+//   ・タイの店舗には日本の取引先が出ない
+// を、店舗ごとの表示ON/OFF設定（active_*）に手を付けずに実現する。
+// ※ active_* を書き換える方式だと、今後マスタに項目を足したとき
+//    既存店舗に出なくなるという副作用があるため避けている。
+function itemRegion(it) { return (it && it.region) || 'JP'; }
+function forStoreRegion(store, items) {
+  const c = storeCountry(store);
+  return items.filter(it => itemRegion(it) === c);
+}
+
+// ===== マスタ管理：項目を「日本用／タイ用」に切り替えるボタン =====
+// タイの取引先が決まったら、ここで項目を足して「🇹🇭 タイ」に切り替える。
+const REGION_LABEL = { JP: '🇯🇵 日本', TH: '🇹🇭 タイ' };
+function _findMasterItem(kind, id, catKey) {
+  if (kind === 'sales') return getSalesMaster().find(x => x.id === id);
+  if (kind === 'sup')   return getMaster(catKey).find(x => x.id === id);
+  return getPLItemsMaster(catKey).find(x => x.id === id);
+}
+function regionBtn(kind, id, catKey) {
+  const r = itemRegion(_findMasterItem(kind, id, catKey));
+  const th = r === 'TH';
+  return `<button onclick="toggleItemRegion('${kind}','${id}','${catKey || ''}')"
+    title="この項目を使う国を切り替えます。「タイ」にすると日本の店舗には出なくなります。"
+    style="width:58px;flex:none;font-size:10px;padding:4px 0;border-radius:4px;cursor:pointer;
+           font-family:inherit;white-space:nowrap;
+           border:1px solid ${th ? '#ce93d8' : '#ddd'};
+           background:${th ? '#f3e5f5' : '#fafafa'};color:${th ? '#6a1b9a' : '#777'}"
+    >${REGION_LABEL[r]}</button>`;
+}
+function toggleItemRegion(kind, id, catKey) {
+  const flip = r => (r === 'TH' ? 'JP' : 'TH');
+  if (kind === 'sales') {
+    const m = getSalesMaster(), it = m.find(x => x.id === id);
+    if (!it) return;
+    it.region = flip(itemRegion(it));
+    saveSalesMaster(m); renderSalesMasterContent();
+  } else if (kind === 'sup') {
+    const m = getMaster(catKey), it = m.find(x => x.id === id);
+    if (!it) return;
+    it.region = flip(itemRegion(it));
+    saveMaster(catKey, m); renderMasterCatContent();
+  } else {
+    const m = getPLItemsMaster(catKey), it = m.find(x => x.id === id);
+    if (!it) return;
+    it.region = flip(itemRegion(it));
+    savePLItemsMaster(catKey, m); renderMasterCatContent();
+  }
+}
+
+// ============================================================
+// ===== タイ店舗の初期項目（英語・VAT 7%）=====
+// ============================================================
+// 取引先の実名が決まるまでの入れ物。マスタ管理で名前を変えたり足したりできる。
+// ※ ラベルはマスタ共通なので、2つのタイ店舗で同じ名前になる。
+//    店舗ごとに違う名前にしたいときは、日次の「表示設定」でサブネームを入れるか、
+//    マスタ管理で店舗別の項目を足して「🇹🇭 タイ」にすること。
+const TH_VAT = 0.07;
+const THAI_SETUP = {
+  sales: [
+    { id: 'pm_th_cash',     label: 'Cash',                          tax: TH_VAT },
+    { id: 'pm_th_card',     label: 'Credit Card',                   tax: TH_VAT },
+    { id: 'pm_th_qr',       label: 'QR / PromptPay',                tax: TH_VAT },
+    { id: 'pm_th_delivery', label: 'Delivery App (Grab / LINE MAN)', tax: TH_VAT },
+    { id: 'pm_th_transfer', label: 'Bank Transfer',                 tax: TH_VAT },
+    { id: 'pm_th_voucher',  label: 'Voucher / Gift Card',           tax: TH_VAT },
+  ],
+  food: [
+    { id: 'fs_th_meat',      label: 'Meat Supplier',        tax: TH_VAT, inputType: 'incl' },
+    { id: 'fs_th_seafood',   label: 'Seafood Supplier',     tax: TH_VAT, inputType: 'incl' },
+    { id: 'fs_th_vegetable', label: 'Vegetables & Fruit',   tax: TH_VAT, inputType: 'incl' },
+    { id: 'fs_th_dry',       label: 'Dry Goods & Groceries', tax: TH_VAT, inputType: 'incl' },
+    { id: 'fs_th_beverage',  label: 'Beverage & Alcohol',   tax: TH_VAT, inputType: 'incl' },
+    { id: 'fs_th_other',     label: 'Other Food Purchases', tax: TH_VAT, inputType: 'incl' },
+  ],
+  pl: {
+    fee: [
+      { id: 'pli_th_cardfee',  label: 'Card / QR Fee',            tax: TH_VAT, inputType: 'incl' },
+      { id: 'pli_th_delivfee', label: 'Delivery App Commission',  tax: TH_VAT, inputType: 'incl' },
+    ],
+    labor: [
+      { id: 'pli_th_wage',     label: 'Staff Wages',           tax: 0, inputType: 'incl' },
+      { id: 'pli_th_parttime', label: 'Part-time Wages',       tax: 0, inputType: 'incl' },
+      { id: 'pli_th_overtime', label: 'Overtime',              tax: 0, inputType: 'incl' },
+      { id: 'pli_th_service',  label: 'Service Charge Payout', tax: 0, inputType: 'incl' },
+      { id: 'pli_th_socsec',   label: 'Social Security',       tax: 0, inputType: 'incl' },
+    ],
+    rent: [
+      { id: 'pli_th_rent', label: 'Rent',            tax: TH_VAT, inputType: 'incl' },
+      { id: 'pli_th_cam',  label: 'Common Area Fee', tax: TH_VAT, inputType: 'incl' },
+    ],
+    facility: [
+      { id: 'pli_th_elec',     label: 'Electricity',      tax: TH_VAT, inputType: 'incl' },
+      { id: 'pli_th_water',    label: 'Water',            tax: TH_VAT, inputType: 'incl' },
+      { id: 'pli_th_gas',      label: 'Gas / LPG',        tax: TH_VAT, inputType: 'incl' },
+      { id: 'pli_th_internet', label: 'Internet & Phone', tax: TH_VAT, inputType: 'incl' },
+      { id: 'pli_th_waste',    label: 'Waste Collection', tax: TH_VAT, inputType: 'incl' },
+      { id: 'pli_th_cleaning', label: 'Cleaning',         tax: TH_VAT, inputType: 'incl' },
+    ],
+    equip: [
+      { id: 'pli_th_supplies', label: 'Operating Supplies',   tax: TH_VAT, inputType: 'incl' },
+      { id: 'pli_th_repair',   label: 'Repair & Maintenance',  tax: TH_VAT, inputType: 'incl' },
+      { id: 'pli_th_misc',     label: 'Miscellaneous',        tax: TH_VAT, inputType: 'incl' },
+    ],
+    ad: [
+      { id: 'pli_th_ads',      label: 'Advertising & Promotion', tax: TH_VAT, inputType: 'incl' },
+      { id: 'pli_th_platform', label: 'Online Platform Fee',     tax: TH_VAT, inputType: 'incl' },
+    ],
+  },
+};
+
+// タイ用の項目をマスタへ入れる。一度だけ。
+// ・同じIDがあれば足さない（二重登録しない）
+// ・日本の店舗の表示設定には触らない（region で振り分けているため不要）
+// ・管理者が消した項目が毎回戻ってこないよう、済みの印を残す
+function setupThaiStores() {
+  if (localStorage.getItem('_th_seeded')) return;
+  const addInto = (list, items) => {
+    const have = new Set(list.map(x => x.id));
+    let added = 0;
+    items.forEach(it => { if (!have.has(it.id)) { list.push({ ...it, region: 'TH' }); added++; } });
+    return added;
+  };
+  const sales = getSalesMaster();
+  if (addInto(sales, THAI_SETUP.sales)) saveSalesMaster(sales);
+  const food = getMaster('food');
+  if (addInto(food, THAI_SETUP.food)) saveMaster('food', food);
+  Object.entries(THAI_SETUP.pl).forEach(([catKey, items]) => {
+    const m = getPLItemsMaster(catKey);
+    if (addInto(m, items)) savePLItemsMaster(catKey, m);
+  });
+  // 念のための修復。
+  // 古い版が「日本の項目だけを並べた表示リスト」をタイ店舗に書き込んでいた場合、
+  // タイの項目が1つも入っていないので画面が空になる。そのときだけ差し替える。
+  // 正常な状態（リスト未設定＝全項目有効）には手を付けない。
+  Object.keys(STORE_CONFIG).filter(s => storeCountry(s) === 'TH').forEach(store => {
+    const thSales = THAI_SETUP.sales.map(x => x.id);
+    const a = getActiveSales(store);
+    if (a !== null && !a.some(id => thSales.includes(id))) saveActiveSales(store, thSales);
+    const thFood = THAI_SETUP.food.map(x => x.id);
+    const f = getActive(store, 'food');
+    if (f !== null && !f.some(id => thFood.includes(id))) saveActive(store, 'food', thFood);
+  });
+  localStorage.setItem('_th_seeded', '1');
+}
+
+// 現在選ばれている店舗が英語表示かどうか。
+// 店舗選択前は <select> の既定値（日本の店舗）なので日本語になる＝安全側。
+function isEN() {
+  try { return storeLang(currentStore()) === 'en'; } catch (e) { return false; }
+}
+
+// 日本語の文字列をそのまま辞書のキーに使う。
+// 訳が無ければ日本語がそのまま出るだけなので、取りこぼしても画面は壊れない。
+const UI_EN = {
+  // ---- ヘッダー・共通 ----
+  '日次管理ツール': 'Daily Management',
+  '年度': 'Fiscal Year', '店舗': 'Store', '月': 'Month',
+  '保存済み ✓': 'Saved ✓', '🔒 管理者': '🔒 Admin', '切替 ⇄': 'Switch ⇄',
+  'タップで店舗を切り替え': 'Tap to switch store', 'このページの版': 'Version of this page',
+  '📅 日次入力': '📅 Daily Entry', '📊 月間集計': '📊 Monthly Summary',
+  '📈 予実管理': '📈 Budget vs Actual', '⚙️ マスタ管理': '⚙️ Master Settings',
+  // ---- 同期の表示（ここが読めないとデータが消えるので必ず訳す）----
+  '✓ 同期済み（閉じてOK）': '✓ Synced — safe to close',
+  '↑ 送信中…': '↑ Sending…',
+  '⚠ 同期エラー（クリックして再試行）': '⚠ Sync error (tap to retry)',
+  '☁ クラウド未接続（この端末にのみ保存）': '☁ Not connected — saved on this device only',
+  '⚠ 保存できません': '⚠ Cannot save',
+  '送信できていない入力があります。この状態で閉じると消える可能性があります。':
+    'Some entries have not been sent yet. If you close now, they may be lost.',
+  'クラウドへの送信が完了しています': 'All entries have been sent to the cloud',
+  // ---- 日次入力 ----
+  '◀ 前日': '◀ Prev', '翌日 ▶': 'Next ▶',
+  '売上項目': 'Sales', '材料費': 'Food Cost', '管理費': 'Overheads', '人件費': 'Labor',
+  '変動費': 'Variable Costs', '家賃': 'Rent', '設備・管理費': 'Utilities & Facility',
+  '備品雑費': 'Supplies & Misc', '広告費': 'Advertising', '食材費': 'Food Cost',
+  '非課税': 'No VAT', '税込み入力': 'VAT incl.', '税抜き入力': 'VAT excl.',
+  '税込み': 'VAT incl.', '税抜き': 'VAT excl.',
+  '（名称未設定）': '(no name)', '（無名）': '(unnamed)', '未分類': 'Unclassified',
+  '項目がありません。下の「表示設定」から追加してください。':
+    'No items yet. Add them from “Display settings” below.',
+  '表示設定（この店舗のみ）': 'Display settings (this store only)',
+  '── 取引先 ──': '── Suppliers ──', '── 手動入力項目 ──': '── Manual items ──',
+  '＿サブネーム（例：01234567）': '_Sub-name (e.g. 01234567)',
+  'タップで税込み/税抜きを切替（この店舗のみ）':
+    'Tap to switch VAT included / excluded (this store only)',
+  '「税込み／税抜き」バッジをタップすると、この店舗だけ入力形式を変更できます（★＝店舗別設定中）':
+    'Tap the “VAT incl./excl.” badge to change how this store enters amounts (★ = changed for this store)',
+  '前の月': 'Previous month', '次の月': 'Next month',
+  // ---- サイドのサマリー ----
+  '売上計': 'Total Sales', '経費計': 'Total Costs',
+  '🎯 本日の売上目標': "🎯 Today's Sales Target",
+  '目標': 'Target', '実績': 'Actual', '達成率': 'Achievement',
+  'ℹ️ ご注意': 'ℹ️ Note',
+  'ここの集計は入力されたままの金額（税込みなど）です。':
+    'These totals use the amounts exactly as entered (VAT included).',
+  '税抜き換算・原価率などの正式な損益は「損益管理ツール」でご確認ください。':
+    'Head office calculates net-of-VAT figures and cost ratios in the P&L tool.',
+  // ---- 月間集計 ----
+  '総売上（税込み）': 'Gross Sales (VAT incl.)', '純売上（税抜き）': 'Net Sales (excl. VAT)',
+  '材料費（税抜き）': 'Food Cost (excl. VAT)', '管理費（税抜き）': 'Overheads (excl. VAT)',
+  '日': 'Day', '総売上': 'Gross Sales', '合計': 'Total',
+  '日々の入力を集計。': 'Totals of the daily entries.',
+  '累計と内訳は': 'Totals and the breakdown are calculated ',
+  'で計算。下の日別表は': '. The table below shows amounts ',
+  '（入力したまま）です。行をクリックするとその日の入力画面へ移動します。':
+    ' exactly as entered. Tap a row to open that day.',
+  // ---- 予実管理 ----
+  '月予算を入力すると、曜日ウェイトに応じて日々の目標が自動計算されます。':
+    'Enter a monthly budget and daily targets are calculated using the day-of-week weights.',
+  '📥 月予算の入力': '📥 Monthly Budget', '未設定': 'not set',
+  '売上': 'Sales', '▼ 開閉': '▼ Toggle',
+  '平日(月〜木)': 'Weekday (Mon–Thu)', '平日': 'Weekday',
+  '金曜': 'Friday', '土曜': 'Saturday', '日曜': 'Sunday',
+  '祝日': 'Public Holiday', '祝前日': 'Day before holiday',
+  '項目': 'Item', '月予算': 'Monthly Budget', '差額': 'Difference',
+  '📅 日別 売上ペース（目標 vs 実績）': '📅 Daily Sales Pace (target vs actual)',
+  '曜日型': 'Day type', '売上目標': 'Sales Target', '売上実績': 'Actual Sales',
+  '累計差': 'Cumulative gap', '月計': 'Month',
+  'クリックで祝日扱いを切替': 'Tap to mark/unmark as a public holiday',
+  // ---- エラー ----
+  '読込エラー': 'Load error',
+};
+function T(ja) {
+  if (!isEN()) return ja;
+  return (UI_EN[ja] !== undefined) ? UI_EN[ja] : ja;
+}
+
+// ---- 日付の書き方 ----
+const MONTH_EN = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const DOW_JA   = ['日','月','火','水','木','金','土'];
+const DOW_EN   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+function dowLabel(i)  { return isEN() ? DOW_EN[i] : DOW_JA[i]; }
+function monthLabel(m){ return isEN() ? MONTH_EN[parseInt(m) - 1] : `${parseInt(m)}月`; }
+function fmtMD(m, d)  { return isEN() ? `${MONTH_EN[parseInt(m)-1]} ${d}` : `${parseInt(m)}月${d}日`; }
+function fmtYM(y, m)  { return isEN() ? `${MONTH_EN[parseInt(m)-1]} ${y}` : `${y}年${parseInt(m)}月`; }
+
+// ---- 通貨 ----
+// 日本の店舗は従来どおり「1,234 円」。タイ店舗は「฿1,234」。
+const CURRENCIES = {
+  JPY: { pre: '',  suf: ' 円', locale: 'ja-JP' },
+  THB: { pre: '฿', suf: '',    locale: 'en-US' },
+};
+// タイ店舗の円併記に使うレート（1バーツ＝何円）。月ごとに管理者が設定する。
+function fxKey(year, month) { return `fx_thb_${year}_${month}`; }
+function getFxRate(year, month) {
+  const v = parseFloat(localStorage.getItem(fxKey(year, month)) || '');
+  return (isFinite(v) && v > 0) ? v : 0;
+}
+function setFxRate(year, month, rate) {
+  if (rate > 0) localStorage.setItem(fxKey(year, month), String(rate));
+  else localStorage.removeItem(fxKey(year, month));
+  scheduleSyncToCloud();
+}
+// 円換算の併記。レート未設定・日本の店舗では何も出さない。
+function jpyNote(n, store) {
+  const st = (store === undefined) ? _safeStore() : store;
+  if (storeCurrency(st) !== 'THB') return '';
+  const rate = getFxRate(currentYear(), currentMonth());
+  if (!rate || !n) return '';
+  const yen = Math.round(n * rate).toLocaleString('ja-JP');
+  return isEN() ? ` (≈ ¥${yen})` : `（≈ ¥${yen}）`;
+}
+function _safeStore() { try { return currentStore(); } catch (e) { return ''; } }
+// 月間集計の見出しに「どのレートで円換算したか」を小さく添える。
+// レート未設定なら、円併記が出ない理由がわかるように知らせる。
+function fxHeadNote() {
+  if (storeCurrency(_safeStore()) !== 'THB') return '';
+  const rate = getFxRate(currentYear(), currentMonth());
+  return rate
+    ? `<span class="cal-sub" style="font-weight:400">1฿ = ¥${rate}</span>`
+    : `<span class="cal-sub" style="font-weight:400;color:#ffcc80">exchange rate not set</span>`;
+}
 function updateStoreBanner() {
   const store  = currentStore();
   const banner = document.getElementById('storeBanner');
@@ -1297,9 +1621,44 @@ function updateStoreBanner() {
   const date   = document.getElementById('storeBannerDate');
   if (!banner) return;
   banner.style.background = STORE_COLORS[store] || '#555';
-  name.textContent = store;
-  const d = currentDay ? `${currentMonth()}月${currentDay}日` : `${currentMonth()}月`;
-  date.textContent = `${currentYear()}年 ${d} を入力中`;
+  name.textContent = storeLabel(store);
+  if (isEN()) {
+    const d = currentDay ? fmtMD(currentMonth(), currentDay) : monthLabel(currentMonth());
+    date.textContent = `Entering ${d}, ${currentYear()}`;
+  } else {
+    const d = currentDay ? `${currentMonth()}月${currentDay}日` : `${currentMonth()}月`;
+    date.textContent = `${currentYear()}年 ${d} を入力中`;
+  }
+}
+
+// ===== 静かに貼ってある文字（HTMLに直接書かれたラベル）を店舗の言語に合わせる =====
+// 画面を描き直すたびに呼ぶ。日本の店舗では元の日本語に戻る。
+function applyLanguage() {
+  const set = (id, txt) => { const el = document.getElementById(id); if (el) el.textContent = txt; };
+  set('appTitle',  T('日次管理ツール'));
+  set('yearLbl',   T('年度'));
+  set('storeLbl',  T('店舗'));
+  set('monthLbl',  T('月'));
+  set('savedBadge', T('保存済み ✓'));
+  set('adminToggle', T('🔒 管理者'));
+  set('storeBannerSwitch', T('切替 ⇄'));
+  const sb = document.getElementById('storeBanner');
+  if (sb) sb.title = T('タップで店舗を切り替え');
+  const av = document.getElementById('appVer');
+  if (av) av.title = T('このページの版');
+  // 同期バッジは店舗を選ぶ前に出ていることがある（＝日本語のまま）。
+  // 言語が変わったら、いまの状態のまま書き直す。
+  const sy = document.getElementById('syncBadge');
+  if (sy) {
+    const st = ['ok', 'ing', 'err', 'off'].find(c => sy.classList.contains(c));
+    if (st) updateSyncBadge(st);
+  }
+  set('tab-daily',    T('📅 日次入力'));
+  set('tab-monthsum', T('📊 月間集計'));
+  set('tab-yojitsu',  T('📈 予実管理'));
+  set('tab-master',   T('⚙️ マスタ管理'));
+  const ms = document.getElementById('selMonth');
+  if (ms) [...ms.options].forEach(o => { o.textContent = monthLabel(o.value); });
 }
 
 // ===== スタート（店舗選択）ページ =====
@@ -1386,7 +1745,7 @@ function onStoreChange() {
 function renderStorePinSettings() {
   const rows = Object.keys(STORE_CONFIG).map(store => {
     const hasPin = !!getStorePin(store);
-    const name   = STORE_CONFIG[store].name || store;
+    const name   = STORE_CONFIG[store].name || storeLabel(store);
     return `<div style="display:flex;align-items:center;justify-content:space-between;
               padding:8px 0;border-bottom:1px solid #f5f5f3;font-size:14px">
       <span>${name}</span>
@@ -1430,7 +1789,15 @@ function currentStore() { return document.getElementById('selStore').value; }
 function currentMonth() { return document.getElementById('selMonth').value; }
 function currentYear()  { return document.getElementById('selYear').value; }
 
-function fmt(n) { return Math.round(n).toLocaleString('ja-JP') + ' 円'; }
+// 金額の書き方。店舗の通貨で出す（日本＝「1,234 円」／タイ＝「฿1,234」）。
+// store を省いたときは、いま選ばれている店舗の通貨を使う。
+function fmt(n, store) {
+  const st = (store === undefined) ? _safeStore() : store;
+  const c  = CURRENCIES[storeCurrency(st)] || CURRENCIES.JPY;
+  const v  = Math.round(n);
+  const sign = v < 0 ? '-' : '';
+  return sign + c.pre + Math.abs(v).toLocaleString(c.locale) + c.suf;
+}
 
 // ===== マスタ管理 =====
 function getMaster(catKey) {
@@ -1537,7 +1904,7 @@ function applyItypeOverride(store, items) {
 }
 
 function getSuppliers(store, catKey) {
-  const master = getMaster(catKey);
+  const master = forStoreRegion(store, getMaster(catKey));
   const active = getActive(store, catKey);
   const list = active === null ? master : master.filter(s => new Set(active).has(s.id));
   return applyItypeOverride(store, list);
@@ -1573,7 +1940,7 @@ function saveActiveSales(store, ids) {
   scheduleSyncToCloud();
 }
 function getSalesMethodsForStore(store) {
-  const master = getSalesMaster();
+  const master = forStoreRegion(store, getSalesMaster());
   const active = getActiveSales(store);
   if (active === null) return master;
   const set = new Set(active);
@@ -1603,6 +1970,7 @@ function initMasters() {
     });
     saveMaster('food', masterSups);
     Object.entries(STORE_CONFIG).forEach(([store, cfg]) => {
+      if (storeCountry(store) === 'TH') return;   // タイ店舗は region で絞るので書き込まない
       saveActive(store, 'food', cfg.foodSuppliers.map(([id]) => id));
     });
   }
@@ -1635,11 +2003,14 @@ function initMasters() {
     ];
     saveSalesMaster(defaultMethods);
     Object.entries(STORE_CONFIG).forEach(([store, cfg]) => {
+      if (storeCountry(store) === 'TH') return;   // 同上
       const active = ['pm_cash10','pm_cash8','pm_credit10','pm_credit8','pm_pay10','pm_pay8','pm_point10'];
       if (cfg.salesExtra && cfg.salesExtra.some(([k]) => k === 'shoppingTicket10')) active.push('pm_ticket10');
       saveActiveSales(store, active);
     });
   }
+  // タイ店舗の英語項目を入れる（初回のみ・既存店舗の設定には触らない）
+  setupThaiStores();
 }
 
 // ===== 管理者モード =====
@@ -1707,10 +2078,41 @@ function renderMasterTab() {
          <button class="btn btn-clear" onclick="renderStorePinSettings()" style="margin-top:4px">🏪 店舗PINの設定</button>
          <button class="btn btn-clear" onclick="showSetupModal()" style="margin-top:4px">☁️ クラウド接続設定</button>
        </div>
-     </div>`;
+     </div>
+     ${fxRateCard()}`;
   if (currentMasterSection === 'invoice') renderMasterCatContent();
   else renderSalesMasterContent();
 }
+// ===== 管理者メニュー：タイ店舗の円換算レート =====
+// 入力はバーツのまま。円は「およその目安」として併記するだけなので、
+// レートを未設定にしておけば円の併記は出ない（間違ったレートで出さない）。
+function fxRateCard() {
+  const y = currentYear(), m = currentMonth();
+  const rate = getFxRate(y, m);
+  return `<div class="pl-card" style="margin-top:10px">
+    <div class="pl-head">🇹🇭 タイ店舗の円換算レート</div>
+    <div class="pl-body">
+      <div style="font-size:12px;color:#888;margin-bottom:8px">
+        ${y}年度 ${m}月に使うレート（1バーツ＝何円）。<br>
+        入力・集計はバーツのままで、円は目安として併記されます。<br>
+        空欄にすると円の併記は出ません。月ごとに設定してください。
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <span style="font-size:13px">1฿ = ¥</span>
+        <input type="number" step="0.01" min="0" value="${rate || ''}" placeholder="例：4.5"
+               onchange="onFxRateInput(this.value)"
+               style="flex:1;border:1px solid #ddd;border-radius:4px;padding:6px 8px;
+                      font-family:inherit;font-size:14px">
+      </div>
+    </div>
+  </div>`;
+}
+function onFxRateInput(valStr) {
+  const v = parseFloat(valStr);
+  setFxRate(currentYear(), currentMonth(), isFinite(v) && v > 0 ? v : 0);
+  toast(isFinite(v) && v > 0 ? `レートを 1฿ = ¥${v} にしました` : 'レートを未設定にしました');
+}
+
 function switchMasterCat(catKey) {
   currentMasterSection = 'invoice';
   currentMasterCat = catKey;
@@ -1743,15 +2145,17 @@ function renderSalesMasterContent() {
           <select class="tax-sel" onchange="updateSalesMethodTax('${id}',this.value)">
             <option value="0.10"${tax===0.10?' selected':''}>10%込み</option>
             <option value="0.08"${tax===0.08?' selected':''}>8%込み</option>
+            <option value="0.07"${tax===0.07?' selected':''}>7%込み（タイVAT）</option>
             <option value="0"${tax===0?' selected':''}>非課税</option>
           </select>
+          ${regionBtn('sales', id, null)}
           <button class="btn-del" onclick="deleteSalesMethod('${id}')">✕</button>
         </div>`;
       }).join('');
 
   // 店舗別アクティブ設定
   const storeBlocks = Object.keys(STORE_CONFIG).map(store => {
-    const checks = methods.map(({ id, label, tax }) => {
+    const checks = forStoreRegion(store, methods).map(({ id, label, tax }) => {
       const tl = tax===0?'非課税':`${(tax*100).toFixed(0)}%`;
       return `<div class="store-check-row">
         <input type="checkbox" ${isActiveSales(store,id)?'checked':''}
@@ -1760,7 +2164,7 @@ function renderSalesMasterContent() {
         <span>${label}<span class="tax-tag">${tl}</span></span>
       </div>`;
     }).join('');
-    return `<div class="store-block"><div class="store-block-name">${store}</div>${checks}</div>`;
+    return `<div class="store-block"><div class="store-block-name">${storeLabel(store)}</div>${checks}</div>`;
   }).join('');
 
   document.getElementById('masterCatContent').innerHTML =
@@ -1770,7 +2174,7 @@ function renderSalesMasterContent() {
          <span class="subtotal">${methods.length}件</span>
        </div>
        <div class="card-body">
-         ${methods.length > 0 ? `<div class="sales-header"><span></span><span>支払い方法名</span><span>税種</span><span></span></div>` : ''}
+         ${methods.length > 0 ? `<div class="sales-header"><span></span><span>支払い方法名</span><span>税種</span><span>国</span><span></span></div>` : ''}
          ${rowsHtml}
          <button class="btn-add-sup" onclick="addSalesMethod()">＋ 支払い方法を追加</button>
        </div>
@@ -1858,11 +2262,13 @@ function renderMasterCatContent() {
                     onchange="updateMasterTax('${catKey}','${id}',this.value)">
               <option value="0.10"${tax===0.10?' selected':''}>10%</option>
               <option value="0.08"${tax===0.08?' selected':''}>8%</option>
+              <option value="0.07"${tax===0.07?' selected':''}>7%（タイ）</option>
               <option value="0"${tax===0?' selected':''}>非課税</option>
             </select>
             <button class="type-btn ${itype}" onclick="updateMasterInputType('${catKey}','${id}')">
               ${itype==='excl'?'税抜き':'税込み'}
             </button>
+            ${regionBtn('sup', id, catKey)}
             <select class="tax-sel" style="font-size:11px"
                     onchange="changeMasterCategory('${catKey}','${id}',this.value)">${catOpts}</select>
             ${subSelect}
@@ -1899,11 +2305,13 @@ function renderMasterCatContent() {
                       onchange="updatePLItemTax('${catKey}','${id}',this.value)">
                 <option value="0.10"${tax===0.10?' selected':''}>10%</option>
                 <option value="0.08"${tax===0.08?' selected':''}>8%</option>
+                <option value="0.07"${tax===0.07?' selected':''}>7%（タイ）</option>
                 <option value="0"${tax===0?' selected':''}>非課税</option>
               </select>
               <button class="type-btn ${itype}" onclick="updatePLItemInputType('${catKey}','${id}')">
                 ${itype==='excl'?'税抜き':'税込み'}
               </button>
+              ${regionBtn('pl', id, catKey)}
               <select class="tax-sel" style="font-size:11px"
                       onchange="changePLItemCategory('${catKey}','${id}',this.value)">${catOpts}</select>
             </div>
@@ -1972,7 +2380,7 @@ function renderMasterCatContent() {
         <div class="card-body">
           <div style="font-size:11px;color:#888;margin-bottom:8px">各店舗で「自動計算」か「手動入力」かを選択します</div>
           <div class="store-grid">${Object.keys(STORE_CONFIG).map(store => {
-            const rows = computedItems.map(({ id, label }) => {
+            const rows = forStoreRegion(store, computedItems).map(({ id, label }) => {
               const mode = getPLItemMode(store, id);
               return `<div class="store-check-row" style="justify-content:space-between">
                 <span style="font-size:12px">${label || '（名称未設定）'}</span>
@@ -1983,14 +2391,14 @@ function renderMasterCatContent() {
                 </button>
               </div>`;
             }).join('');
-            return `<div class="store-block"><div class="store-block-name">${store}</div>${rows}</div>`;
+            return `<div class="store-block"><div class="store-block-name">${storeLabel(store)}</div>${rows}</div>`;
           }).join('')}</div>
         </div>
       </div>`;
 
     // 手動入力項目の店舗別ON/OFF
     const plStoreBlocks = plItems.length === 0 ? '' : Object.keys(STORE_CONFIG).map(store => {
-      const checks = plItems.map(({ id, label }) =>
+      const checks = forStoreRegion(store, plItems).map(({ id, label }) =>
         `<div class="store-check-row">
           <input type="checkbox" ${isActivePLItem(store, catKey, id) ? 'checked' : ''}
                  onchange="onToggleActivePLItem('${store}','${catKey}','${id}')"
@@ -1998,7 +2406,7 @@ function renderMasterCatContent() {
           <span>${label || '（名称未設定）'}</span>
         </div>`
       ).join('');
-      return `<div class="store-block"><div class="store-block-name">${store}</div>${checks}</div>`;
+      return `<div class="store-block"><div class="store-block-name">${storeLabel(store)}</div>${checks}</div>`;
     }).join('');
     plItemsSection = `
       <div class="card" style="margin-top:12px">
@@ -2010,7 +2418,7 @@ function renderMasterCatContent() {
           <div style="font-size:11px;color:#888;margin-bottom:8px">
             ※ 請求書取引先と並行して損益入力タブに表示されます。両方の合計がカテゴリ合計になります。
           </div>
-          ${plItems.length > 0 ? `<div class="sup-header"><span></span><span>項目名</span><span>税率</span><span>入力形式</span><span>カテゴリ</span><span></span></div>` : ''}
+          ${plItems.length > 0 ? `<div class="sup-header"><span></span><span>項目名</span><span>税率</span><span>入力形式</span><span>国</span><span>カテゴリ</span><span></span></div>` : ''}
           ${plRowsHtml}
           <button class="btn-add-sup" onclick="addPLItem('${catKey}')">＋ 項目を追加</button>
         </div>
@@ -2071,7 +2479,7 @@ function renderMasterCatContent() {
        </div>
        <div class="card-body">
          ${sups.length > 0 ? `<div class="sup-header">
-           <span></span><span>取引先名</span><span>税率</span><span>入力形式</span><span>カテゴリ</span><span></span>
+           <span></span><span>取引先名</span><span>税率</span><span>入力形式</span><span>国</span><span>カテゴリ</span><span></span>
          </div>` : ''}
          ${rowsHtml}
          <button class="btn-add-sup" onclick="addMasterSup('${catKey}')">＋ 取引先を追加</button>
@@ -2255,7 +2663,7 @@ function saveActivePLItems(store, catKey, ids) {
   scheduleSyncToCloud();
 }
 function getPLItemsForStore(store, catKey) {
-  const master = getPLItemsMaster(catKey);
+  const master = forStoreRegion(store, getPLItemsMaster(catKey));
   const active = getActivePLItems(store, catKey);
   const list = active === null ? master : master.filter(i => new Set(active).has(i.id));
   return applyItypeOverride(store, list);
@@ -2326,6 +2734,7 @@ function switchTab(name) {
 }
 
 function reload() {
+  applyLanguage();
   updateStoreBanner();
   const isWide = currentTab === 'monthsum' || currentTab === 'yojitsu';
   const layout = document.getElementById('layout');
@@ -2373,18 +2782,21 @@ function updateSyncBadge(state, msg) {
   if (!el) return;
   const n = (typeof _dirtyKeys !== 'undefined') ? _dirtyKeys.size : 0;
   el.className = 'sync-badge show ' + state;
+  const en = isEN();
   let text = msg;
   if (!text) {
-    if (state === 'ok')       text = '✓ 同期済み（閉じてOK）';
-    else if (state === 'ing') text = n > 0 ? `↑ 送信中… 残り${n}件` : '↑ 送信中…';
-    else if (state === 'err') text = n > 0 ? `⚠ 未送信 ${n}件 — まだ閉じないで（クリックで再送信）`
-                                           : '⚠ 同期エラー（クリックして再試行）';
-    else if (state === 'off') text = '☁ クラウド未接続（この端末にのみ保存）';
+    if (state === 'ok')       text = T('✓ 同期済み（閉じてOK）');
+    else if (state === 'ing') text = n > 0 ? (en ? `↑ Sending… ${n} left` : `↑ 送信中… 残り${n}件`)
+                                           : T('↑ 送信中…');
+    else if (state === 'err') text = n > 0
+      ? (en ? `⚠ ${n} NOT SENT — do not close (tap to retry)` : `⚠ 未送信 ${n}件 — まだ閉じないで（クリックで再送信）`)
+      : T('⚠ 同期エラー（クリックして再試行）');
+    else if (state === 'off') text = T('☁ クラウド未接続（この端末にのみ保存）');
   }
   el.textContent = text || '';
   el.title = state === 'err'
-    ? '送信できていない入力があります。この状態で閉じると消える可能性があります。'
-    : (state === 'ok' ? 'クラウドへの送信が完了しています' : '');
+    ? T('送信できていない入力があります。この状態で閉じると消える可能性があります。')
+    : (state === 'ok' ? T('クラウドへの送信が完了しています') : '');
 }
 
 function scheduleSyncToCloud() {
@@ -2459,13 +2871,18 @@ let _storageErrShown = false;
 function _onStorageWriteError(k, e) {
   console.error('localStorage への保存に失敗:', k, e);
   try { _記録('❌保存できない', k + ' / ' + String(e).slice(0, 80)); } catch (_) {}
-  try { updateSyncBadge('err', '⚠ 保存できません'); } catch (_) {}
+  try { updateSyncBadge('err', T('⚠ 保存できません')); } catch (_) {}
   if (_storageErrShown) return;
   _storageErrShown = true;
   alert('⚠️ データを保存できませんでした\n\n' +
         'ブラウザの保存容量がいっぱいか、プライベートモードで開いている可能性があります。\n\n' +
         '画面に見えている入力は保存されていません。\n' +
-        'この状態で入力を続けないでください。管理者に連絡してください。');
+        'この状態で入力を続けないでください。管理者に連絡してください。\n\n' +
+        '--------\n' +
+        '⚠️ COULD NOT SAVE YOUR DATA\n\n' +
+        'The browser storage may be full, or this page may be open in private mode.\n\n' +
+        'What you see on the screen has NOT been saved.\n' +
+        'Please stop entering data and contact the administrator.');
 }
 
 // 変更のあったキーに「未送信の印」を付ける仕組み（これが効かないとデータが消える）。
@@ -2588,14 +3005,14 @@ async function syncToCloud(離脱時) {
 
 async function loadFromCloud() {
   if (!CLOUD.url || !CLOUD.pwd) return false;
-  setLoading(true, 'クラウドからデータを読み込み中…');
+  setLoading(true, 'クラウドからデータを読み込み中… / Loading…');
   try {
     const res = await fetch(`${CLOUD.url}?pwd=${encodeURIComponent(CLOUD.pwd)}`);
     const json = await res.json();
     if (json.error) throw new Error(json.error === 'unauthorized' ? 'パスワードが違います' : json.error);
     if (Object.keys(json).length === 0) {
       // クラウドが空 → ローカルデータを全て変更扱いにしてアップロード
-      setLoading(true, 'ローカルデータをクラウドへ転送中…');
+      setLoading(true, 'ローカルデータをクラウドへ転送中… / Uploading…');
       _markAllOwnedDirty();
       await syncToCloud();
     } else {
@@ -2619,7 +3036,7 @@ async function loadFromCloud() {
   } catch (e) {
     setLoading(false);
     updateSyncBadge('err');
-    toast(`読込エラー: ${e.message}`);
+    toast(`${T('読込エラー')}: ${e.message}`);
     return false;
   }
 }
@@ -2650,7 +3067,7 @@ async function submitSetup() {
   const errEl = document.getElementById('setupErr');
   errEl.style.display = 'none';
   if (!url || !pwd) { showSetupErr('URLとパスワードを入力してください。'); return; }
-  setLoading(true, '接続テスト中…');
+  setLoading(true, '接続テスト中… / Connecting…');
   try {
     const res = await fetch(`${url}?pwd=${encodeURIComponent(pwd)}`);
     const json = await res.json();
@@ -2662,7 +3079,7 @@ async function submitSetup() {
     localStorage.setItem('cloud_pwd', pwd);
     // クラウドにデータがあればローカルに展開、なければアップロード
     if (Object.keys(json).length === 0) {
-      setLoading(true, 'ローカルデータをクラウドへ転送中…');
+      setLoading(true, 'ローカルデータをクラウドへ転送中… / Uploading…');
       _markAllOwnedDirty();
       await syncToCloud();
     } else {
@@ -2896,7 +3313,7 @@ function dailyGroups(store, tab) {
     return [{ label: null, catKey: 'labor', items: [...getSuppliers(store, 'labor'), ...dailyManualPL(store, 'labor')] }];
   // mgmt: 変動費・家賃・設備・備品・広告をグループ表示
   return MGMT_CATS.map(c => ({
-    label: c.label,
+    label: T(c.label),
     catKey: c.key,
     items: [...getSuppliers(store, c.key), ...dailyManualPL(store, c.key)],
   }));
@@ -2922,7 +3339,7 @@ function renderCalendar() {
   const monthData = getDailyMonth(store, currentMonth(), currentYear());
   const dim = daysInMonth(year, month);
   const first = new Date(year, month - 1, 1).getDay();
-  const wd = ['日','月','火','水','木','金','土'];
+  const wd = isEN() ? DOW_EN.map(x => x.slice(0, 2)) : DOW_JA;
   const head = wd.map((w, i) => `<div class="cal-wd${i===0?' sun':i===6?' sat':''}">${w}</div>`).join('');
   let cells = '';
   for (let i = 0; i < first; i++) cells += `<div class="cal-cell empty"></div>`;
@@ -2936,9 +3353,10 @@ function renderCalendar() {
   const entered = Object.keys(monthData).filter(d => Object.keys(monthData[d] || {}).length > 0).length;
   return `<div class="calendar">
     <div class="cal-nav">
-      <button onclick="shiftMonth(-1)" title="前の月">‹</button>
-      <span class="cal-title">${year}年 ${month}月<span class="cal-sub">入力 ${entered} / ${dim}日</span></span>
-      <button onclick="shiftMonth(1)" title="次の月">›</button>
+      <button onclick="shiftMonth(-1)" title="${T('前の月')}">‹</button>
+      <span class="cal-title">${isEN() ? fmtYM(year, month) : `${year}年 ${month}月`}<span class="cal-sub">${
+        isEN() ? `${entered} / ${dim} days` : `入力 ${entered} / ${dim}日`}</span></span>
+      <button onclick="shiftMonth(1)" title="${T('次の月')}">›</button>
     </div>
     <div class="cal-grid cal-head">${head}</div>
     <div class="cal-grid">${cells}</div>
@@ -2977,9 +3395,9 @@ function renderDaily() {
   const dim = daysInMonth(parseInt(y), parseInt(m));
   if (!currentDay) currentDay = 1;
   if (currentDay > dim) currentDay = dim;
-  const dow = '日月火水木金土'[new Date(parseInt(y), parseInt(m) - 1, currentDay).getDay()];
+  const dow = dowLabel(new Date(parseInt(y), parseInt(m) - 1, currentDay).getDay());
   const subnav = DAILY_TABS.map(t =>
-    `<button class="inv-subtab${t.key===currentDailyTab?' active':''}" onclick="switchDailyTab('${t.key}')">${t.label}</button>`
+    `<button class="inv-subtab${t.key===currentDailyTab?' active':''}" onclick="switchDailyTab('${t.key}')">${T(t.label)}</button>`
   ).join('');
   // カレンダーはPCでは右側パネルに出す（メイン列を取引先の一覧に使うため）。
   // スマホは1列レイアウトで右側パネルが下に回ってしまうので、従来どおり上に出す。
@@ -2987,9 +3405,9 @@ function renderDaily() {
   document.getElementById('mainPanel').innerHTML =
     `<div class="cal-slot-main">${renderCalendar()}</div>
      <div class="day-nav">
-       <button class="day-nav-btn" onclick="changeDay(-1)">◀ 前日</button>
-       <div class="day-nav-date">${m}月${currentDay}日（${dow}）<small>${y}年</small></div>
-       <button class="day-nav-btn" onclick="changeDay(1)">翌日 ▶</button>
+       <button class="day-nav-btn" onclick="changeDay(-1)">${T('◀ 前日')}</button>
+       <div class="day-nav-date">${isEN() ? `${fmtMD(m, currentDay)} (${dow})` : `${m}月${currentDay}日（${dow}）`}<small>${isEN() ? y : y + '年'}</small></div>
+       <button class="day-nav-btn" onclick="changeDay(1)">${T('翌日 ▶')}</button>
      </div>
      <div class="inv-subtabs">${subnav}</div>
      <div id="dailyContent"></div>`;
@@ -3006,15 +3424,17 @@ function switchDailyTab(tab) {
 
 function dailyRowHtml(item, dayData, monthData, inputDays) {
   const itype  = item.inputType || 'incl';
-  const taxLbl = (item.tax === 0) ? '非課税' : `${Math.round((item.tax||0)*100)}%`;
-  const typeLbl = itype === 'excl' ? '税抜き入力' : '税込み入力';
+  const taxLbl = (item.tax === 0) ? T('非課税') : `${Math.round((item.tax||0)*100)}%`;
+  const typeLbl = itype === 'excl' ? T('税抜き入力') : T('税込み入力');
   const cur = dayData[item.id];
   let cum = 0;
   Object.values(monthData).forEach(dd => { if (dd && typeof dd[item.id] === 'number') cum += dd[item.id]; });
   const avg = inputDays > 0 ? cum / inputDays : 0;
   // 月累計は別行にすると1行67pxになり、取引先の一覧性が落ちる。
   // 取引先名の下に小さく添えて1行に収める。
-  const cumLine = cum > 0 ? `月累計 <b>${fmt(cum)}</b>　平均 ${fmt(avg)}` : '';
+  const cumLine = cum > 0
+    ? (isEN() ? `Month <b>${fmt(cum)}</b>　Avg ${fmt(avg)}` : `月累計 <b>${fmt(cum)}</b>　平均 ${fmt(avg)}`)
+    : '';
   return `<div class="d-row">
     <div class="d-label">
       <div class="d-name-line">
@@ -3033,8 +3453,8 @@ function dailyRowHtml(item, dayData, monthData, inputDays) {
 let _dailyOpenPanels = new Set();
 
 function buildDailySelectPanel(store, catKey) {
-  const masterSups = getMaster(catKey);
-  const masterPL   = getPLItemsMaster(catKey).filter(i => (i.type || 'manual') !== 'computed');
+  const masterSups = forStoreRegion(store, getMaster(catKey));
+  const masterPL   = forStoreRegion(store, getPLItemsMaster(catKey)).filter(i => (i.type || 'manual') !== 'computed');
   if (masterSups.length === 0 && masterPL.length === 0) return '';
 
   const isOpen = _dailyOpenPanels.has(catKey);
@@ -3046,46 +3466,46 @@ function buildDailySelectPanel(store, catKey) {
     const isOv  = !!ov[id] && ov[id] !== masterItype;
     return `<button class="type-tag ${eff}" style="cursor:pointer;border:1px dashed ${eff==='excl'?'#90caf9':'#a5d6a7'};background:${eff==='excl'?'#e3f2fd':'#e8f5e9'}"
         onclick="event.preventDefault();onToggleStoreItype('${store}','${id}','${masterItype}')"
-        title="タップで税込み/税抜きを切替（この店舗のみ）">
-      ${eff==='excl'?'税抜き':'税込み'}${isOv?'★':''}
+        title="${T('タップで税込み/税抜きを切替（この店舗のみ）')}">
+      ${eff==='excl'?T('税抜き'):T('税込み')}${isOv?'★':''}
     </button>`;
   };
 
   if (masterSups.length > 0) {
-    if (masterPL.length > 0) rows += `<div style="font-size:11px;color:#888;padding:4px 0 2px">── 取引先 ──</div>`;
+    if (masterPL.length > 0) rows += `<div style="font-size:11px;color:#888;padding:4px 0 2px">${T('── 取引先 ──')}</div>`;
     rows += masterSups.map(({ id, label, tax, inputType }) => {
       const on     = isActive(store, catKey, id);
-      const taxLbl = tax === 0 ? '非課税' : `${(tax*100).toFixed(0)}%`;
+      const taxLbl = tax === 0 ? T('非課税') : `${(tax*100).toFixed(0)}%`;
       const itype  = inputType || 'incl';
       const sn = (getSubnames(store)[id] || '').replace(/"/g,'&quot;');
       return `<div class="select-row">
         <label class="select-label">
           <input type="checkbox" ${on?'checked':''} onchange="onToggleDailyActive('${store}','${catKey}','${id}')">
-          <span class="select-name">${label || '（名称未設定）'}</span>
+          <span class="select-name">${label || T('（名称未設定）')}</span>
           <span class="tax-tag">${taxLbl}</span>
           ${itypeBtn(id, itype)}
         </label>
-        <input type="text" class="subname-input" value="${sn}" placeholder="＿サブネーム（例：01234567）"
+        <input type="text" class="subname-input" value="${sn}" placeholder="${T('＿サブネーム（例：01234567）')}"
                onchange="onSubnameInput('${store}','${id}',this.value)">
       </div>`;
     }).join('');
   }
 
   if (masterPL.length > 0) {
-    if (masterSups.length > 0) rows += `<div style="font-size:11px;color:#888;padding:6px 0 2px">── 手動入力項目 ──</div>`;
+    if (masterSups.length > 0) rows += `<div style="font-size:11px;color:#888;padding:6px 0 2px">${T('── 手動入力項目 ──')}</div>`;
     rows += masterPL.map(({ id, label, tax, inputType }) => {
       const on     = isActivePLItem(store, catKey, id);
-      const taxLbl = tax === 0 ? '非課税' : `${(tax*100).toFixed(0)}%`;
+      const taxLbl = tax === 0 ? T('非課税') : `${(tax*100).toFixed(0)}%`;
       const itype  = inputType || 'incl';
       const sn = (getSubnames(store)[id] || '').replace(/"/g,'&quot;');
       return `<div class="select-row">
         <label class="select-label">
           <input type="checkbox" ${on?'checked':''} onchange="onToggleDailyActivePL('${store}','${catKey}','${id}')">
-          <span class="select-name">${label || '（名称未設定）'}</span>
+          <span class="select-name">${label || T('（名称未設定）')}</span>
           <span class="tax-tag">${taxLbl}</span>
           ${itypeBtn(id, itype)}
         </label>
-        <input type="text" class="subname-input" value="${sn}" placeholder="＿サブネーム（例：01234567）"
+        <input type="text" class="subname-input" value="${sn}" placeholder="${T('＿サブネーム（例：01234567）')}"
                onchange="onSubnameInput('${store}','${id}',this.value)">
       </div>`;
     }).join('');
@@ -3093,11 +3513,11 @@ function buildDailySelectPanel(store, catKey) {
 
   return `<div class="select-panel">
     <div class="select-panel-head" onclick="toggleDailySelectPanel(this,'${catKey}')">
-      ${isOpen ? '▼' : '▶'} 表示設定（この店舗のみ）
+      ${isOpen ? '▼' : '▶'} ${T('表示設定（この店舗のみ）')}
     </div>
     <div class="select-panel-body" style="${isOpen ? '' : 'display:none'}">
       <div style="font-size:11px;color:#999;padding:2px 0 6px">
-        「税込み／税抜き」バッジをタップすると、この店舗だけ入力形式を変更できます（★＝店舗別設定中）
+        ${T('「税込み／税抜き」バッジをタップすると、この店舗だけ入力形式を変更できます（★＝店舗別設定中）')}
       </div>
       ${rows}
     </div>
@@ -3108,7 +3528,7 @@ function toggleDailySelectPanel(head, catKey) {
   const body = head.nextElementSibling;
   const open = body.style.display !== 'none';
   body.style.display = open ? 'none' : '';
-  head.textContent = (open ? '▶' : '▼') + ' 表示設定（この店舗のみ）';
+  head.textContent = (open ? '▶' : '▼') + ' ' + T('表示設定（この店舗のみ）');
   if (open) _dailyOpenPanels.delete(catKey); else _dailyOpenPanels.add(catKey);
 }
 
@@ -3137,18 +3557,18 @@ function renderDailyContent() {
   const monthData = getDailyMonth(store, month, year);
   const inputDays = Object.values(monthData).filter(dd => dd && Object.keys(dd).length > 0).length;
   const groups = dailyGroups(store, currentDailyTab);
-  const tabLabel = DAILY_TABS.find(t => t.key === currentDailyTab).label;
+  const tabLabel = T(DAILY_TABS.find(t => t.key === currentDailyTab).label);
 
   let html = '';
   groups.forEach((g, gi) => {
     const bodyRows = g.items.length === 0
-      ? `<div class="d-empty">項目がありません。下の「表示設定」から追加してください。</div>`
+      ? `<div class="d-empty">${T('項目がありません。下の「表示設定」から追加してください。')}</div>`
       : g.items.map(it => dailyRowHtml(it, dayData, monthData, inputDays)).join('');
     const dayTotal = g.items.reduce((s, it) => s + (typeof dayData[it.id]==='number'?dayData[it.id]:0), 0);
     const selectPanel = (currentDailyTab !== 'sales') ? buildDailySelectPanel(store, g.catKey) : '';
     html += `<div class="d-card">
       <div class="d-card-head"><span>${g.label || tabLabel}</span>
-        <span class="sub" id="d-cardtotal-${gi}">当日 ${dayTotal>0?fmt(dayTotal):'—'}</span></div>
+        <span class="sub" id="d-cardtotal-${gi}">${isEN()?'Today':'当日'} ${dayTotal>0?fmt(dayTotal):'—'}</span></div>
       <div class="d-card-body">${bodyRows}</div>
       ${selectPanel}
     </div>`;
@@ -3165,7 +3585,7 @@ function renderDailyContentTotalsOnly() {
     const el = document.getElementById(`d-cardtotal-${gi}`);
     if (!el) return;
     const dayTotal = g.items.reduce((s, it) => s + (typeof dayData[it.id]==='number'?dayData[it.id]:0), 0);
-    el.textContent = `当日 ${dayTotal>0?fmt(dayTotal):'—'}`;
+    el.textContent = `${isEN()?'Today':'当日'} ${dayTotal>0?fmt(dayTotal):'—'}`;
   });
 }
 
@@ -3195,7 +3615,7 @@ function renderDailySide() {
 
   const row = (lbl, dv, mv, major) =>
     `<div class="ds-row${major?' major':''}"><span>${lbl}</span><span class="ds-val">${dv>0?fmt(dv):'—'}</span></div>` +
-    (mv>0?`<div class="ds-row" style="border:none;padding:0 0 4px"><span class="ds-sub">　└ 月累計</span><span class="ds-sub">${fmt(mv)}</span></div>`:'');
+    (mv>0?`<div class="ds-row" style="border:none;padding:0 0 4px"><span class="ds-sub">${isEN()?'　└ Month total':'　└ 月累計'}</span><span class="ds-sub">${fmt(mv)}${major?jpyNote(mv):''}</span></div>`:'');
 
   // 本日の売上目標（予実）
   const tgt = dayTarget(store, parseInt(year), parseInt(month), currentDay, 'sales');
@@ -3204,11 +3624,11 @@ function renderDailySide() {
     const rate = tgt > 0 ? dS / tgt : 0;
     const cls = dS >= tgt ? 'good' : 'bad';
     targetBlock = `<div class="day-sum">
-      <div class="day-sum-head" style="background:#1f3a5f">🎯 本日の売上目標</div>
+      <div class="day-sum-head" style="background:#1f3a5f">${T('🎯 本日の売上目標')}</div>
       <div class="day-sum-body">
-        <div class="ds-row"><span>目標</span><span class="ds-val">${fmt(tgt)}</span></div>
-        <div class="ds-row"><span>実績</span><span class="ds-val">${dS>0?fmt(dS):'—'}</span></div>
-        <div class="ds-row major"><span>達成率</span><span class="yj-rate ${dS>0?cls:''}">${dS>0?(rate*100).toFixed(0)+'%':'—'}</span></div>
+        <div class="ds-row"><span>${T('目標')}</span><span class="ds-val">${fmt(tgt)}</span></div>
+        <div class="ds-row"><span>${T('実績')}</span><span class="ds-val">${dS>0?fmt(dS):'—'}</span></div>
+        <div class="ds-row major"><span>${T('達成率')}</span><span class="yj-rate ${dS>0?cls:''}">${dS>0?(rate*100).toFixed(0)+'%':'—'}</span></div>
       </div>
     </div>`;
   }
@@ -3216,21 +3636,21 @@ function renderDailySide() {
   side.innerHTML = `
     <div class="cal-slot-side">${renderCalendar()}</div>
     <div class="day-sum">
-      <div class="day-sum-head">📅 ${month}月${currentDay}日 サマリー</div>
+      <div class="day-sum-head">📅 ${fmtMD(month, currentDay)}${isEN() ? ' Summary' : ' サマリー'}</div>
       <div class="day-sum-body">
-        ${row('売上計', dS, mS, true)}
-        ${row('材料費', dF, mF)}
-        ${row('管理費', dM, mM)}
-        ${row('人件費', dL, mL)}
-        ${row('経費計', dCost, mCost, true)}
+        ${row(T('売上計'), dS, mS, true)}
+        ${row(T('材料費'), dF, mF)}
+        ${row(T('管理費'), dM, mM)}
+        ${row(T('人件費'), dL, mL)}
+        ${row(T('経費計'), dCost, mCost, true)}
       </div>
     </div>
     ${targetBlock}
     <div class="day-sum">
-      <div class="day-sum-head" style="background:#5d4037">ℹ️ ご注意</div>
+      <div class="day-sum-head" style="background:#5d4037">${T('ℹ️ ご注意')}</div>
       <div class="day-sum-body" style="font-size:11px;color:#888;line-height:1.7">
-        ここの集計は入力されたままの金額（税込みなど）です。<br>
-        税抜き換算・原価率などの正式な損益は「損益管理ツール」でご確認ください。
+        ${T('ここの集計は入力されたままの金額（税込みなど）です。')}<br>
+        ${T('税抜き換算・原価率などの正式な損益は「損益管理ツール」でご確認ください。')}
       </div>
     </div>`;
 }
@@ -3270,7 +3690,7 @@ function renderMonthSum() {
       const n = netOf(it, dd);
       if (n) { const k = it.subcat || ''; subTotals[k] = (subTotals[k]||0) + n; }
     });
-    const dow = '日月火水木金土'[new Date(parseInt(y),parseInt(m)-1,d).getDay()];
+    const dow = dowLabel(new Date(parseInt(y),parseInt(m)-1,d).getDay());
     rows += `<tr class="${has?'':'empty'}" onclick="gotoDay(${d})">
       <td>${d}(${dow})</td>
       <td>${s?fmt(s):'-'}</td><td>${f?fmt(f):'-'}</td><td>${mg?fmt(mg):'-'}</td><td>${l?fmt(l):'-'}</td></tr>`;
@@ -3282,12 +3702,12 @@ function renderMonthSum() {
   const knownIds = new Set(subs.map(s => s.id));
   let unclassified = 0;
   Object.entries(subTotals).forEach(([k, v]) => { if (!knownIds.has(k)) unclassified += v; });
-  const breakdown = subs.map(sc => [sc.label || '（無名）', subTotals[sc.id] || 0])
-    .concat(unclassified > 0 ? [['未分類', unclassified]] : [])
+  const breakdown = subs.map(sc => [sc.label || T('（無名）'), subTotals[sc.id] || 0])
+    .concat(unclassified > 0 ? [[T('未分類'), unclassified]] : [])
     .filter(([, v]) => v > 0);
   const subBreakdownHtml = (tFnet > 0 && breakdown.length) ? `
     <div class="msum-cum" style="margin-top:-4px">
-      <div class="msum-cum-head">🍖 材料費の内訳（税抜き・合計 ${fmt(tFnet)}）</div>
+      <div class="msum-cum-head">${isEN() ? `🍖 Food Cost Breakdown (excl. VAT · total ${fmt(tFnet)})` : `🍖 材料費の内訳（税抜き・合計 ${fmt(tFnet)}）`}</div>
       <div class="msum-sub-list">
         ${breakdown.map(([label, v]) => `
           <div class="msum-sub-row">
@@ -3300,21 +3720,25 @@ function renderMonthSum() {
 
   document.getElementById('mainPanel').innerHTML = `
     <div class="msum-cum">
-      <div class="msum-cum-head">📊 ${y}年${m}月 累計（入力 ${inputDays}日）</div>
+      <div class="msum-cum-head">${isEN()
+        ? `📊 ${fmtYM(y, m)} Total (${inputDays} days entered)`
+        : `📊 ${y}年${m}月 累計（入力 ${inputDays}日）`}${fxHeadNote()}</div>
       <div class="msum-cum-grid">
-        <div class="msum-cum-card gross"><span>総売上（税込み）</span><b>${fmt(tS)}</b></div>
-        <div class="msum-cum-card net"><span>純売上（税抜き）</span><b>${fmt(tNet)}</b></div>
-        <div class="msum-cum-card"><span>材料費（税抜き）</span><b>${fmt(tFnet)}</b></div>
-        <div class="msum-cum-card"><span>管理費（税抜き）</span><b>${fmt(tMnet)}</b></div>
-        <div class="msum-cum-card span2"><span>人件費</span><b>${fmt(tL)}</b></div>
+        <div class="msum-cum-card gross"><span>${T('総売上（税込み）')}</span><b>${fmt(tS)}<small>${jpyNote(tS)}</small></b></div>
+        <div class="msum-cum-card net"><span>${T('純売上（税抜き）')}</span><b>${fmt(tNet)}<small>${jpyNote(tNet)}</small></b></div>
+        <div class="msum-cum-card"><span>${T('材料費（税抜き）')}</span><b>${fmt(tFnet)}<small>${jpyNote(tFnet)}</small></b></div>
+        <div class="msum-cum-card"><span>${T('管理費（税抜き）')}</span><b>${fmt(tMnet)}<small>${jpyNote(tMnet)}</small></b></div>
+        <div class="msum-cum-card span2"><span>${T('人件費')}</span><b>${fmt(tL)}<small>${jpyNote(tL)}</small></b></div>
       </div>
     </div>
     ${subBreakdownHtml}
-    <div class="info-note"><b>${store}</b> / ${y}年${m}月　日々の入力を集計。<br>累計と内訳は<b>税抜き</b>で計算。下の日別表は<b>税込み</b>（入力したまま）です。行をクリックするとその日の入力画面へ移動します。</div>
+    <div class="info-note">${isEN()
+      ? `<b>${storeLabel(store)}</b> / ${fmtYM(y, m)}　Totals of the daily entries.<br>The totals and the breakdown are <b>excl. VAT</b>. The table below shows amounts <b>as entered</b>. Tap a row to open that day.`
+      : `<b>${store}</b> / ${y}年${m}月　日々の入力を集計。<br>累計と内訳は<b>税抜き</b>で計算。下の日別表は<b>税込み</b>（入力したまま）です。行をクリックするとその日の入力画面へ移動します。`}</div>
     <table class="msum-table">
-      <thead><tr><th>日</th><th>総売上</th><th>材料費</th><th>管理費</th><th>人件費</th></tr></thead>
+      <thead><tr><th>${T('日')}</th><th>${T('総売上')}</th><th>${T('材料費')}</th><th>${T('管理費')}</th><th>${T('人件費')}</th></tr></thead>
       <tbody>${rows}
-        <tr class="total-row"><td>合計</td><td>${fmtc(tS)}</td><td>${fmtc(tF)}</td><td>${fmtc(tM)}</td><td>${fmtc(tL)}</td></tr>
+        <tr class="total-row"><td>${T('合計')}</td><td>${fmtc(tS)}</td><td>${fmtc(tF)}</td><td>${fmtc(tM)}</td><td>${fmtc(tL)}</td></tr>
       </tbody>
     </table>`;
 }
@@ -3370,10 +3794,29 @@ function getHolidayOverrides(store) {
   const s = localStorage.getItem(`holio_${store}`);
   return s ? JSON.parse(s) : {};
 }
+// タイの祝日。日付が毎年同じものだけを入れてある（月日で判定するので年がずれない）。
+// 仏教の祝日（マーカブーチャー・ウィサーカブーチャー・アーサーラハブーチャー・カオパンサー）は
+// 年によって日が動くため入れていない。該当日は予実画面で「曜日型」をタップして祝日にすること。
+const TH_HOLIDAYS_MD = new Set([
+  '01-01', // New Year's Day
+  '04-06', // Chakri Memorial Day
+  '04-13', '04-14', '04-15', // Songkran
+  '05-01', // National Labour Day
+  '05-04', // Coronation Day
+  '06-03', // HM Queen Suthida's Birthday
+  '07-28', // HM King Vajiralongkorn's Birthday
+  '08-12', // HM Queen Mother Sirikit's Birthday
+  '10-13', // Passing of HM King Bhumibol
+  '10-23', // Chulalongkorn Day
+  '12-05', // HM King Bhumibol's Birthday / National Day
+  '12-10', // Constitution Day
+  '12-31', // New Year's Eve
+]);
 function isHoliday(store, y, m, d) {
   const key = ymd(y, m, d);
   const ov = getHolidayOverrides(store);
   if (key in ov) return ov[key];
+  if (storeCountry(store) === 'TH') return TH_HOLIDAYS_MD.has(key.slice(5));
   return JP_HOLIDAYS.has(key);
 }
 function toggleHolidayDay(d) {
@@ -3455,30 +3898,32 @@ function renderYojitsu() {
   const w = getWeights(store);
 
   const budgetRows = BUDGET_CATS.map(c =>
-    `<div class="yj-frow"><label>${c.label}の月予算</label>
-       <input type="number" min="0" placeholder="未設定"
+    `<div class="yj-frow"><label>${isEN() ? `Monthly budget — ${T(c.label)}` : `${c.label}の月予算`}</label>
+       <input type="number" min="0" placeholder="${T('未設定')}"
               value="${b[c.key]!==undefined&&b[c.key]!==null?b[c.key]:''}"
               oninput="updateBudget('${c.key}', this.value)"></div>`
   ).join('');
 
   const weightRows = DAYTYPES.map(t =>
-    `<div class="yj-wrow"><span>${t.label}</span>
+    `<div class="yj-wrow"><span>${T(t.label)}</span>
        <input type="number" step="0.1" min="0" value="${w[t.key]}"
               oninput="updateWeight('${t.key}', this.value)"></div>`
   ).join('');
 
   document.getElementById('mainPanel').innerHTML = `
-    <div class="info-note"><b>${store}</b> / ${y}年${m}月　月予算を入力すると、曜日ウェイトに応じて日々の目標が自動計算されます。</div>
+    <div class="info-note"><b>${storeLabel(store)}</b> / ${fmtYM(y, m)}　${T('月予算を入力すると、曜日ウェイトに応じて日々の目標が自動計算されます。')}</div>
     <div class="yj-card">
-      <div class="yj-head" style="cursor:default">📥 月予算の入力</div>
+      <div class="yj-head" style="cursor:default">${T('📥 月予算の入力')}</div>
       <div class="yj-body">${budgetRows}</div>
     </div>
     <div class="yj-card">
-      <div class="yj-head" onclick="toggleYjBody(this)">⚖️ 曜日ウェイト設定（${store} 専用）　<span style="font-weight:400;font-size:11px;color:#e8b86d">▼ 開閉</span></div>
+      <div class="yj-head" onclick="toggleYjBody(this)">${isEN() ? `⚖️ Day-of-week Weights (${storeLabel(store)} only)` : `⚖️ 曜日ウェイト設定（${store} 専用）`}　<span style="font-weight:400;font-size:11px;color:#e8b86d">${T('▼ 開閉')}</span></div>
       <div class="yj-body" id="yjWeightBody">
         <div class="yj-wgrid">${weightRows}</div>
-        <div class="yj-note">数字は「比率」です。土曜が平日の1.5倍売れるなら、平日1.0／土曜1.5のように設定します。<br>
-        月予算をこの比率で各日に振り分けます（合計が予算と一致）。この設定は <b>${store}</b> だけに適用されます。</div>
+        <div class="yj-note">${isEN()
+          ? `These numbers are <b>ratios</b>. If Saturday sells 1.5× a weekday, set weekday 1.0 and Saturday 1.5.<br>The monthly budget is split across the days by these ratios (the daily targets add up to the budget). This setting applies to <b>${storeLabel(store)}</b> only.`
+          : `数字は「比率」です。土曜が平日の1.5倍売れるなら、平日1.0／土曜1.5のように設定します。<br>
+        月予算をこの比率で各日に振り分けます（合計が予算と一致）。この設定は <b>${store}</b> だけに適用されます。`}</div>
       </div>
     </div>
     <div id="yjResult"></div>`;
@@ -3505,7 +3950,7 @@ function renderYojitsuResult() {
     const isGood = c.good === 'high' ? (rate >= 1) : (bg > 0 && rate <= 1);
     const rateCls = bg === 0 ? '' : (isGood ? 'good' : 'bad');
     return `<tr>
-      <td>${c.label}</td>
+      <td>${T(c.label)}</td>
       <td>${bg > 0 ? fmt(bg) : '—'}</td>
       <td>${ac > 0 ? fmt(ac) : '—'}</td>
       <td class="yj-rate ${rateCls}">${bg > 0 ? (rate*100).toFixed(0)+'%' : '—'}</td>
@@ -3522,11 +3967,11 @@ function renderYojitsuResult() {
     cumT += t; cumA += a;
     const cdiff = cumA - cumT;
     const tk = dayType(store, yr, mo, d);
-    const dow = '日月火水木金土'[new Date(yr, mo-1, d).getDay()];
+    const dow = dowLabel(new Date(yr, mo-1, d).getDay());
     const aheadCls = a > 0 || cumA > 0 ? (cdiff >= 0 ? 'ahead' : 'behind') : '';
     dayRows += `<tr class="${aheadCls}">
       <td>${d}(${dow})</td>
-      <td><span class="yj-type ${tk}" onclick="toggleHolidayDay(${d})" title="クリックで祝日扱いを切替">${dayTypeLabel(tk).replace('平日(月〜木)','平日')}</span></td>
+      <td><span class="yj-type ${tk}" onclick="toggleHolidayDay(${d})" title="${T('クリックで祝日扱いを切替')}">${T(dayTypeLabel(tk)).replace(T('平日(月〜木)'), T('平日'))}</span></td>
       <td>${t > 0 ? fmt(t) : '—'}</td>
       <td>${a > 0 ? fmt(a) : '—'}</td>
       <td class="diff">${(a>0||cumA>0)?((cdiff>=0?'+':'')+fmt(cdiff)):'—'}</td>
@@ -3535,21 +3980,23 @@ function renderYojitsuResult() {
 
   wrap.innerHTML = `
     <table class="yj-sum-table">
-      <thead><tr><th>項目</th><th>月予算</th><th>実績</th><th>達成率</th><th>差額</th></tr></thead>
+      <thead><tr><th>${T('項目')}</th><th>${T('月予算')}</th><th>${T('実績')}</th><th>${T('達成率')}</th><th>${T('差額')}</th></tr></thead>
       <tbody>${sumRows}</tbody>
     </table>
     <div class="yj-card">
-      <div class="yj-head" style="cursor:default">📅 日別 売上ペース（目標 vs 実績）</div>
+      <div class="yj-head" style="cursor:default">${T('📅 日別 売上ペース（目標 vs 実績）')}</div>
       <div class="yj-body" style="padding:0">
         <table class="yj-day-table">
-          <thead><tr><th>日</th><th>曜日型</th><th>売上目標</th><th>売上実績</th><th>累計差</th></tr></thead>
+          <thead><tr><th>${T('日')}</th><th>${T('曜日型')}</th><th>${T('売上目標')}</th><th>${T('売上実績')}</th><th>${T('累計差')}</th></tr></thead>
           <tbody>${dayRows}
-            <tr class="total-row"><td>月計</td><td>—</td><td>${cumT>0?fmt(cumT):'—'}</td><td>${cumA>0?fmt(cumA):'—'}</td><td>${(cumA>0||cumT>0)?((cumA-cumT>=0?'+':'')+fmt(cumA-cumT)):'—'}</td></tr>
+            <tr class="total-row"><td>${T('月計')}</td><td>—</td><td>${cumT>0?fmt(cumT):'—'}</td><td>${cumA>0?fmt(cumA):'—'}</td><td>${(cumA>0||cumT>0)?((cumA-cumT>=0?'+':'')+fmt(cumA-cumT)):'—'}</td></tr>
           </tbody>
         </table>
       </div>
     </div>
-    <div class="yj-note" style="padding:0 4px 12px">※「曜日型」をクリックすると、その日を祝日扱いにON/OFFできます（臨時休業・特別営業日などの調整用）。達成率の色：売上は100%以上が緑／経費は予算内（100%以下）が緑。</div>`;
+    <div class="yj-note" style="padding:0 4px 12px">${isEN()
+      ? 'Tap a “Day type” to mark that day as a public holiday or back again (useful for closures and special opening days). Colours: sales is green at 100% or more; costs are green while within budget (100% or less).'
+      : '※「曜日型」をクリックすると、その日を祝日扱いにON/OFFできます（臨時休業・特別営業日などの調整用）。達成率の色：売上は100%以上が緑／経費は予算内（100%以下）が緑。'}</div>`;
 }
 
 // ============================================================
