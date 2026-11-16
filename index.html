@@ -898,7 +898,7 @@
 <script>
 // このファイルの版。端末が古い版のまま動いていないかを判別するために使う。
 // 中身を更新したら必ずこの日付も変えること。
-const APP_VERSION = '2026-11-15a';
+const APP_VERSION = '2026-11-16a';
 
 
 const INVOICE_CATS = [
@@ -3705,15 +3705,17 @@ function renderMonthSum() {
   const breakdown = subs.map(sc => [sc.label || T('（無名）'), subTotals[sc.id] || 0])
     .concat(unclassified > 0 ? [[T('未分類'), unclassified]] : [])
     .filter(([, v]) => v > 0);
+  // 原価率 ＝ 材料費（税抜き）÷ 純売上（税抜き）
+  const costRate = v => (isEN() ? 'cost ' : '原価率 ') + (tNet > 0 ? (v / tNet * 100).toFixed(1) + '%' : '-');
   const subBreakdownHtml = (tFnet > 0 && breakdown.length) ? `
     <div class="msum-cum" style="margin-top:-4px">
-      <div class="msum-cum-head">${isEN() ? `🍖 Food Cost Breakdown (excl. VAT · total ${fmt(tFnet)})` : `🍖 材料費の内訳（税抜き・合計 ${fmt(tFnet)}）`}</div>
+      <div class="msum-cum-head">${isEN() ? `🍖 Food Cost Breakdown (excl. VAT · total ${fmt(tFnet)} · ${costRate(tFnet)})` : `🍖 材料費の内訳（税抜き・合計 ${fmt(tFnet)}・${costRate(tFnet)}）`}</div>
       <div class="msum-sub-list">
         ${breakdown.map(([label, v]) => `
           <div class="msum-sub-row">
             <span class="msum-sub-name">${label}</span>
             <span class="msum-sub-bar"><span style="width:${tFnet>0?Math.round(v/tFnet*100):0}%"></span></span>
-            <span class="msum-sub-val">${fmt(v)}<small>${tFnet>0?Math.round(v/tFnet*100):0}%</small></span>
+            <span class="msum-sub-val">${fmt(v)}<small>${costRate(v)}</small></span>
           </div>`).join('')}
       </div>
     </div>` : '';
